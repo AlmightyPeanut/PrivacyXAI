@@ -4,6 +4,7 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import tqdm
+from art.estimators.classification import PyTorchClassifier
 from opacus import PrivacyEngine
 from sklearn.kernel_approximation import Nystroem
 from sklearn.linear_model import SGDClassifier
@@ -13,7 +14,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.optim import SGD
 from torch.optim.lr_scheduler import ExponentialLR
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
 from .LRClassifier import LRClassifier
 from .ModelConfig import ModelConfig
@@ -26,13 +27,12 @@ elif torch.backends.mps.is_available():
 else:
     TORCH_DEVICE = torch.device("cpu")
 
-
 # These start and end symbols for the parameters of each model have to be numbers
 # to work with flower's federated learning
-PARAMETER_ARRAY_END_SYMBOL = 2**32 - 1
-PARAMETER_ARRAY_LR_SYMBOL = 2**32 - 2
-PARAMETER_ARRAY_SVC_SYMBOL = 2**32 - 3
-PARAMETER_ARRAY_NN_SYMBOL = 2** 32 - 4
+PARAMETER_ARRAY_END_SYMBOL = 2 ** 32 - 1
+PARAMETER_ARRAY_LR_SYMBOL = 2 ** 32 - 2
+PARAMETER_ARRAY_SVC_SYMBOL = 2 ** 32 - 3
+PARAMETER_ARRAY_NN_SYMBOL = 2 ** 32 - 4
 
 
 class NoValidModelSpecified(Exception):
@@ -104,14 +104,13 @@ class ModelManager:
             self.nn_learning_rate_scheduler.step()
 
     def _train_lr_model_one_batch(self, batch_data: dict[str, np.ndarray]) -> float:
-        self.lr_optimizer.zero_grad()
-
         outputs = self.lr_model(torch.tensor(batch_data['features'], dtype=torch.float32, device=TORCH_DEVICE))
         loss = self.lr_loss_function(outputs,
                                      torch.tensor(batch_data['classes'], dtype=torch.long, device=TORCH_DEVICE))
 
         loss.backward()
         self.lr_optimizer.step()
+        self.lr_optimizer.zero_grad()
 
         return loss.item()
 
@@ -128,14 +127,13 @@ class ModelManager:
         return .0
 
     def _train_nn_model_one_batch(self, batch_data: dict[str, np.array]) -> float:
-        self.nn_optimizer.zero_grad()
-
         outputs = self.nn_model(torch.tensor(batch_data['features'], dtype=torch.float32, device=TORCH_DEVICE))
         loss = self.nn_loss_function(outputs,
                                      torch.tensor(batch_data['classes'], dtype=torch.long, device=TORCH_DEVICE))
 
         loss.backward()
         self.nn_optimizer.step()
+        self.nn_optimizer.zero_grad()
 
         return loss.item()
 
@@ -143,39 +141,28 @@ class ModelManager:
         test_data_samples = next(iter(test_data))
         evaluation_results = dict()
 
-        if 'LR' in self.config.target_models:
-            with torch.no_grad():
-                class_probabilities = self.lr_model(
-                    torch.tensor(test_data_samples['features'], dtype=torch.float32, device=TORCH_DEVICE))
-            class_probabilities = F.softmax(class_probabilities, dim=-1).cpu().numpy()
-            predictions = np.argmax(class_probabilities, axis=1)
+        prediction_logits = self.predict_one_batch_logits(test_data_samples['features'])
 
+        if 'LR' in prediction_logits:
+            prediction_classes = np.argmax(prediction_logits['LR'], axis=1)
             evaluation_results['LR'] = {
-                "F1 Score": f1_score(test_data_samples['classes'], predictions, average='micro'),
-                "AUC": roc_auc_score(test_data_samples['classes'], class_probabilities, multi_class='ovr',
+                "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='micro'),
+                "AUC": roc_auc_score(test_data_samples['classes'], prediction_logits['LR'], multi_class='ovr',
                                      average='macro')
             }
 
         if 'SVC' in self.config.target_models:
-            scaled_data = self.standard_scaler.fit_transform(test_data_samples['features'])
-            kernel_features = self.kernel.fit_transform(scaled_data)
-            predictions = self.svc_model.predict(kernel_features)
+            prediction_classes = np.argmax(prediction_logits['LR'], axis=1)
             evaluation_results['SVC'] = {
-                "F1 Score": f1_score(test_data_samples['classes'], predictions, average='micro'),
+                "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='micro'),
                 "AUC": "n/a"
             }
 
         if 'NN' in self.config.target_models:
-            self.nn_model.eval()
-            with torch.no_grad():
-                class_probabilities = self.nn_model(
-                    torch.tensor(test_data_samples['features'], dtype=torch.float32, device=TORCH_DEVICE))
-            class_probabilities = F.softmax(class_probabilities, dim=-1).cpu().numpy()
-            predictions = np.argmax(class_probabilities, axis=1)
-
+            prediction_classes = np.argmax(prediction_logits['NN'], axis=1)
             evaluation_results['NN'] = {
-                "F1 Score": f1_score(test_data_samples['classes'], predictions, average='micro'),
-                "AUC": roc_auc_score(test_data_samples['classes'], class_probabilities, multi_class='ovr',
+                "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='micro'),
+                "AUC": roc_auc_score(test_data_samples['classes'], prediction_logits['NN'], multi_class='ovr',
                                      average='macro')
             }
 
@@ -253,32 +240,34 @@ class ModelManager:
             )
 
         if new_data_loader is not None:
+            # TODO: data loader is never used
             return new_data_loader
         return data_loader
 
-    def save_models(self, path: os.PathLike) -> None:
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"'{path}' does not exist")
+    def save_models(self, model_folder_path: os.PathLike) -> None:
+        if not os.path.exists(model_folder_path):
+            raise FileNotFoundError(f"'{model_folder_path}' does not exist")
 
         if 'LR' in self.config.target_models:
-            torch.save(self.lr_model.state_dict(), os.path.join(path, 'lr_model.pth'))
+            torch.save(self.lr_model.state_dict(), os.path.join(model_folder_path, 'lr_model.pth'))
 
         if 'SVC' in self.config.target_models:
             raise NotImplementedError("Saving SVC model is not supported")
 
         if 'NN' in self.config.target_models:
-            torch.save(self.nn_model.state_dict(), os.path.join(path, 'nn_model.pth'))
+            torch.save(self.nn_model.state_dict(), os.path.join(model_folder_path, 'nn_model.pth'))
 
-    def load_models(self, path: os.PathLike) -> None:
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"'{path}' does not exist")
+    def load_models(self, model_folder_path: os.PathLike) -> None:
+        if not os.path.exists(model_folder_path):
+            raise FileNotFoundError(f"'{model_folder_path}' does not exist")
 
         if 'LR' in self.config.target_models:
-            self.lr_model.load_state_dict(torch.load(os.path.join(path, 'lr_model.pth')))
+            self.lr_model.load_state_dict(torch.load(os.path.join(model_folder_path, 'lr_model.pth')))
 
         if 'SVC' in self.config.target_models:
             raise NotImplementedError("Saving SVC model is not supported")
 
         if 'NN' in self.config.target_models:
             self.nn_model.load_state_dict(torch.load(os.path.join(path, 'nn_model.pth')))
+            self.nn_model.load_state_dict(torch.load(os.path.join(model_folder_path, 'nn_model.pth')))
 
