@@ -268,6 +268,80 @@ class ModelManager:
             raise NotImplementedError("Saving SVC model is not supported")
 
         if 'NN' in self.config.target_models:
-            self.nn_model.load_state_dict(torch.load(os.path.join(path, 'nn_model.pth')))
             self.nn_model.load_state_dict(torch.load(os.path.join(model_folder_path, 'nn_model.pth')))
 
+    def prepare_models_for_mia(self) -> dict[str, PyTorchClassifier]:
+        models = {}
+
+        if 'LR' in self.config.target_models:
+            models['LR'] = PyTorchClassifier(
+                model=self.lr_model,
+                loss=self.lr_loss_function,
+                input_shape=(1, self.config.number_of_features),
+                nb_classes=self.config.number_of_classes,
+            )
+
+        if 'SVC' in self.config.target_models:
+            raise NotImplementedError("SVC model is not supported for MIA")
+
+        if 'NN' in self.config.target_models:
+            models['NN'] = PyTorchClassifier(
+                model=self.nn_model,
+                loss=self.nn_loss_function,
+                input_shape=(1, self.config.number_of_features),
+                nb_classes=self.config.number_of_classes,
+            )
+
+        return models
+
+    def predict_one_batch_logits(self, data: np.array) -> dict[str, np.ndarray]:
+        prediction_logits = {}
+
+        if 'LR' in self.config.target_models:
+            self.lr_model.eval()
+            with torch.no_grad():
+                class_probabilities = self.lr_model(
+                    torch.tensor(data, dtype=torch.float32, device=TORCH_DEVICE))
+            class_probabilities = F.softmax(class_probabilities, dim=-1).cpu().numpy()
+            prediction_logits['LR'] = class_probabilities
+
+        if 'SVC' in self.config.target_models:
+            raise NotImplementedError("SVC model is not supported for logits")
+
+        if 'NN' in self.config.target_models:
+            self.nn_model.eval()
+            with torch.no_grad():
+                class_probabilities = self.nn_model(
+                    torch.tensor(data, dtype=torch.float32, device=TORCH_DEVICE))
+            class_probabilities = F.softmax(class_probabilities, dim=-1).cpu().numpy()
+            prediction_logits['NN'] = class_probabilities
+
+        return prediction_logits
+
+    def predict_one_batch_classes(self, data: np.array) -> dict[str, np.ndarray]:
+        predictions = self.predict_one_batch_logits(data)
+
+        if 'LR' in predictions:
+            predictions['LR'] = np.argmax(predictions['LR'], axis=-1)
+
+        if 'SVC' in self.config.target_models:
+            scaled_data = self.standard_scaler.fit_transform(data['features'])
+            kernel_features = self.kernel.fit_transform(scaled_data)
+            predictions['SVC'] = self.svc_model.predict_proba(kernel_features)
+
+        if 'NN' in predictions:
+            predictions['NN'] = np.argmax(predictions['NN'], axis=-1)
+
+        return predictions
+
+    def __getitem__(self, item: str):
+        if item == 'LR':
+            return self.lr_model
+
+        if item == 'SVC':
+            return self.svc_model
+
+        if item == 'NN':
+            return self.nn_model
+
+        raise KeyError(item)

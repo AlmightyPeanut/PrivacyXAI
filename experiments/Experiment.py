@@ -68,3 +68,42 @@ class Experiment:
                 print(f"{metric_name}: {metric_score}, ", end='')
             print()
             print()
+
+    def run_xai_evaluation(self, use_federated_model=True):
+        for dataset_name in DATASET_MANAGER.datasets:
+            print(f" XAI evaluation on {dataset_name} ".center(PRINT_WIDTH, '#'))
+
+            if use_federated_model:
+                model_path = Path(__file__).parent / 'model_checkpoints' / 'fl_server_model'
+            else:
+                model_path = Path(__file__).parent / 'model_checkpoints' / 'non_fl_model'
+
+            xai_scores = XAI_MANAGER.evaluate_explanations(DATASET_MANAGER.get_test_data(dataset_name), model_path)
+
+            for model_name, metric_scores in xai_scores.items():
+                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
+                for metric_name, xai_metric_scores in metric_scores.items():
+                    print(f"{metric_name}".center(PRINT_WIDTH, '_'))
+                    for xai_metric_name, xai_metric_score in xai_metric_scores.items():
+                        print(f"{xai_metric_name}: {xai_metric_score}, ", end='')
+                    print()
+                print()
+                print()
+
+    def run_mia(self, use_federated_model=True):
+        for dataset_name in DATASET_MANAGER.datasets:
+            print(f" MIA on {dataset_name} ".center(PRINT_WIDTH, '#'))
+
+            if use_federated_model:
+                # TODO: only use the data from one client (as one client is an attacker)
+                model_path = Path(__file__).parent / 'model_checkpoints' / 'fl_server_model'
+            else:
+                model_path = Path(__file__).parent / 'model_checkpoints' / 'non_fl_model'
+
+            mia_scores = MIA_MANAGER.run_membership_inference_attack(dataset_name, model_path, use_federated_model)
+
+            for model_name, mia_metric_scores in mia_scores.items():
+                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
+                for mia_metric_name, mia_metric_score in mia_metric_scores.items():
+                    print(f"{mia_metric_name}: {mia_metric_score}, ", end='')
+                print()
