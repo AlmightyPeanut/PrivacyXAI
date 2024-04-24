@@ -6,7 +6,7 @@ from flwr.common import FitRes, Parameters, parameters_to_ndarrays
 from flwr.server.client_proxy import ClientProxy
 
 from .FederatedLearningClient import scalar
-from ..model.ModelManager import ModelManager
+from experiments.model.ModelManager import ModelManager
 
 
 class FederatedLearningStrategy(fl.server.strategy.FedAvg):
@@ -30,13 +30,3 @@ class FederatedLearningStrategy(fl.server.strategy.FedAvg):
 
     def get_parameters_of_models(self):
         return parameters_to_ndarrays(self._parameters_of_models)
-
-    def save_models(self, path: os.PathLike) -> None:
-        if self._parameters_of_models is None:
-            raise Exception("No models trained yet!")
-
-        model_manager = ModelManager()
-        model_manager.set_parameters_of_models(parameters_to_ndarrays(self._parameters_of_models))
-        model_manager.save_models(path)
-
-

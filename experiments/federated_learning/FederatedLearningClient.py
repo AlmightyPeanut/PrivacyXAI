@@ -17,10 +17,10 @@ class FederatedLearningClient(fl.client.NumPyClient):
 
         self.train_data_size = len(train_data)
         self.validation_data_size = len(validation_data)
-        self.model_manager = ModelManager()
 
+        self.model_manager = ModelManager()
         if privatise_models:
-            self.train_data = self.model_manager.privatise_models_and_data(train_data)
+            self.model_manager.privatise_models_and_data(train_data)
 
     def get_parameters(self, config: dict[str, scalar]) -> list[np.array]:
         return self.model_manager.get_parameters_of_models()
@@ -39,11 +39,9 @@ class FederatedLearningClient(fl.client.NumPyClient):
         self.model_manager.set_parameters_of_models(parameters_of_models)
         evaluation_scores = self.model_manager.evaluate_target_models(self.validation_data)
 
-        # TODO: loss is expected here, check for difficulties if just .0 is returned
         return .0, self.validation_data_size, evaluation_scores
 
 
-# TODO: check if these two functions are needed or if it is also just possible with the rest of the infrastructure
 def generate_client_fn(train_data_loaders: list[DataLoader], validation_data_loaders: list[DataLoader],
                        privatise_models: bool = True) -> Callable:
     def generate_client(client_id: str) -> FederatedLearningClient:
