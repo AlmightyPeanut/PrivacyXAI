@@ -17,6 +17,7 @@ class MIMICDataset(Dataset):
         new_column_names = list(map(str, range(data.shape[0])))
         self.features = data.select(pl.all().exclude('nights_of_stay_group')).transpose(column_names=new_column_names)
         self.classes = data.select(pl.col('nights_of_stay_group')).transpose(column_names=new_column_names)
+        self.train_test_indicator = None
 
         self.transform = transform
 
@@ -29,11 +30,15 @@ class MIMICDataset(Dataset):
     def __getitems__(self, index: list[int]) -> np.array:
         sample_selection = pl.col(list(map(str, index)))
         features = self.features.select(sample_selection).transpose().to_numpy()
-        classes = self.classes.select(sample_selection).transpose().to_numpy().squeeze(1)
+        features = (features - features.min()) / (features.max() - features.min())
+        classes = self.classes.select(sample_selection).transpose().to_numpy().astype(np.int64).squeeze(1)
+        train_test_indicator = self.train_test_indicator.select(sample_selection).transpose().to_numpy().astype(
+            np.int64).squeeze(1)
 
         samples = {
             'features': features,
-            'classes': classes
+            'classes': classes,
+            'train_test_indicator': train_test_indicator
         }
 
         if self.transform:
@@ -41,3 +46,8 @@ class MIMICDataset(Dataset):
 
         return samples
 
+    def add_train_test_indicator(self, test_inidices: list[int]) -> None:
+        new_column_names = list(map(str, range(self.data_size)))
+        self.train_test_indicator = pl.DataFrame({
+            'is_train_sample': [0 if sample_idx in test_inidices else 1 for sample_idx in range(self.data_size)]
+        }).transpose(column_names=new_column_names)
