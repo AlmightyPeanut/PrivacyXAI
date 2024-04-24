@@ -1,10 +1,11 @@
 import numpy as np
 import polars as pl
 
-from pathlib import Path
 from torch.utils.data import Dataset
 
-MIMIC_DATA_FILE_PATH = Path(__file__).parent.parent.parent / "data" / "MIMIC" / "mimic_data_processed.csv"
+from experiments.utils import DATASET_PATH
+
+MIMIC_DATA_FILE_PATH = DATASET_PATH / "MIMIC" / "mimic_data_processed.csv"
 
 
 class MIMICDataset(Dataset):

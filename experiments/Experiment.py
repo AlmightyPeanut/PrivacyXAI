@@ -1,8 +1,7 @@
-from pathlib import Path
-
 from experiments.dataset.DatasetManager import DATASET_MANAGER
 from experiments.model.ModelManager import ModelManager
 from experiments.federated_learning.FederatedLearningManager import FEDERATED_LEARNING_MANAGER
+from experiments.utils import MODEL_CHECKPOINTS_PATH
 from experiments.xai.XAIManager import XAI_MANAGER
 from experiments.mia.MIAManager import MIA_MANAGER
 
@@ -29,7 +28,7 @@ class Experiment:
 
         print(f"Training target model with {dataset_name} training data")
         model_manager.train_target_models(train_data)
-        model_manager.save_models(Path(__file__).parent / 'model_checkpoints' / 'non_fl_model')
+        model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model')
 
         print(f"Testing model with {dataset_name} test data")
         metrics = model_manager.evaluate_target_models(DATASET_MANAGER.get_test_data(dataset_name))
@@ -45,8 +44,7 @@ class Experiment:
 
         results = FEDERATED_LEARNING_MANAGER.start_simulation()
         server_model_results = FEDERATED_LEARNING_MANAGER.evaluate_server_model()
-        FEDERATED_LEARNING_MANAGER.save_server_model(
-            Path(__file__).parent / 'model_checkpoints' / 'fl_server_model')
+        FEDERATED_LEARNING_MANAGER.save_server_model(MODEL_CHECKPOINTS_PATH / 'fl_server_model')
 
         print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
 
@@ -74,9 +72,9 @@ class Experiment:
             print(f" XAI evaluation on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
             if use_federated_model:
-                model_path = Path(__file__).parent / 'model_checkpoints' / 'fl_server_model'
+                model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
             else:
-                model_path = Path(__file__).parent / 'model_checkpoints' / 'non_fl_model'
+                model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
 
             xai_scores = XAI_MANAGER.evaluate_explanations(DATASET_MANAGER.get_test_data(dataset_name), model_path)
 
@@ -95,10 +93,9 @@ class Experiment:
             print(f" MIA on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
             if use_federated_model:
-                # TODO: only use the data from one client (as one client is an attacker)
-                model_path = Path(__file__).parent / 'model_checkpoints' / 'fl_server_model'
+                model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
             else:
-                model_path = Path(__file__).parent / 'model_checkpoints' / 'non_fl_model'
+                model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
 
             mia_scores = MIA_MANAGER.run_membership_inference_attack(dataset_name, model_path, use_federated_model)
 
