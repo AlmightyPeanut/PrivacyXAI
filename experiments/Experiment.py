@@ -32,6 +32,8 @@ class Experiment:
 
         print(f"Testing model with {dataset_name} test data")
         metrics = model_manager.evaluate_target_models(DATASET_MANAGER.get_test_data(dataset_name))
+        with open(RESULTS_PATH / 'non_fl_model_train_metrics.json', 'w') as f:
+            json.dump(metrics, f)
 
         print(f" Training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
         for model_name, metric_scores in metrics.items():
@@ -45,6 +47,11 @@ class Experiment:
         results = FEDERATED_LEARNING_MANAGER.start_simulation()
         server_model_results = FEDERATED_LEARNING_MANAGER.evaluate_server_model()
         FEDERATED_LEARNING_MANAGER.save_server_model(MODEL_CHECKPOINTS_PATH / 'fl_server_model')
+        with open(RESULTS_PATH / 'fl_model_train_metrics.json', 'w') as f:
+            json.dump(results, f)
+
+        with open(RESULTS_PATH / 'non_fl_server_model_train_metrics.json', 'w') as f:
+            json.dump(server_model_results, f)
 
         print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
 
@@ -77,6 +84,11 @@ class Experiment:
                 model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
 
             xai_scores = XAI_MANAGER.evaluate_explanations(DATASET_MANAGER.get_test_data(dataset_name), model_path)
+            json_file_name = 'fl_model_xai_metrics.json'
+            if not use_federated_model:
+                json_file_name = 'non_' + json_file_name
+            with open(RESULTS_PATH / json_file_name, 'w') as f:
+                json.dump(xai_scores, f)
 
             for model_name, metric_scores in xai_scores.items():
                 print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
@@ -98,6 +110,11 @@ class Experiment:
                 model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
 
             mia_scores = MIA_MANAGER.run_membership_inference_attack(dataset_name, model_path, use_federated_model)
+            json_file_name = 'fl_model_mia_metrics.json'
+            if not use_federated_model:
+                json_file_name = 'non_' + json_file_name
+            with open(RESULTS_PATH / json_file_name, 'w') as f:
+                json.dump(mia_scores, f)
 
             for model_name, mia_metric_scores in mia_scores.items():
                 print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
