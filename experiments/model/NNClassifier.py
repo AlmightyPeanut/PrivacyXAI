@@ -4,40 +4,35 @@ import torch.nn.functional as F
 
 from torch import nn
 
-LAYER_SIZE = 256
+LAYER_SIZE_1 = 1024
+LAYER_SIZE_2 = 256
+LAYER_SIZE_3 = 64
 
 
 class NNClassifier(nn.Module):
     def __init__(self, number_of_features: int, number_of_classes: int):
         super(NNClassifier, self).__init__()
+        self.number_of_classes = number_of_classes
 
-        self.fc1 = nn.Linear(number_of_features, LAYER_SIZE)
-        # self.bn1 = nn.GroupNorm(LAYER_SIZE, LAYER_SIZE)
-
-        self.fc2 = nn.Linear(LAYER_SIZE, LAYER_SIZE)
-#         self.bn2 = nn.GroupNorm(LAYER_SIZE, LAYER_SIZE)
-
-        self.fc3 = nn.Linear(LAYER_SIZE, LAYER_SIZE)
-#         self.bn3 = nn.GroupNorm(LAYER_SIZE, LAYER_SIZE)
-
-        self.output_layer = nn.Linear(LAYER_SIZE, number_of_classes)
+        self.fc1 = nn.Linear(number_of_features, LAYER_SIZE_1)
+        self.fc2 = nn.Linear(LAYER_SIZE_1, LAYER_SIZE_2)
+        self.fc3 = nn.Linear(LAYER_SIZE_2, LAYER_SIZE_3)
+        self.output_layer = nn.Linear(LAYER_SIZE_3, number_of_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.normalize(x, dim=1)
-
         x = self.fc1(x)
-        # x = self.bn1(x)
         x = F.relu(x)
 
         x = self.fc2(x)
-        # x = self.bn2(x)
         x = F.relu(x)
 
         x = self.fc3(x)
-        # x = self.bn3(x)
         x = F.relu(x)
 
         x = self.output_layer(x)
-        x = F.softmax(x, dim=-1)
+        if self.number_of_classes > 1:
+            x = F.softmax(x, dim=-1)
+        else:
+            x = F.sigmoid(x)
 
         return x
