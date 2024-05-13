@@ -31,7 +31,7 @@ class FederatedLearningManager:
         )
 
         train_data_loaders, validation_data_loaders = DATASET_MANAGER.get_federated_learning_data_loaders(
-            self.current_dataset)
+            self.current_dataset, self.config.number_of_clients, self.config.validation_split)
 
         self.client_fn_callback = generate_client_fn(train_data_loaders, validation_data_loaders,
                                                      self.config.privatise_models)
@@ -53,7 +53,13 @@ class FederatedLearningManager:
         return evaluation_scores
 
     def save_server_model(self, model_folder_path: os.PathLike) -> None:
-        self.model_manager.save_models(model_folder_path)
+        fl_parameters = {
+            "fl": True,
+            "fl_clients": self.config.number_of_clients,
+            "fl_rounds": self.config.num_rounds,
+            "privatised": self.config.privatise_models,
+        }
+        self.model_manager.save_models(model_folder_path, fl_parameters)
 
     def get_server_model_parameters(self):
         return self.federated_learning_strategy.get_parameters_of_models()
