@@ -1,13 +1,10 @@
 from dataclasses import dataclass, field
 
-SUPPORTED_DATASETS = {'MIMIC'}
+SUPPORTED_DATASETS = {'MIMIC', 'Iris', 'MIMICExtract', 'BreastCancer'}
 
 
 @dataclass
 class DatasetConfig:
-    datasets: set = field(default_factory=lambda: {'MIMIC'})
-    batch_size: int = field(default=4096)
-    test_split: int = 1000
-    records_to_attack_split: int = 500
-    fl_validation_ratio: float = 0.1
-    number_of_partitions: int = 5
+    datasets: set = field(default_factory=lambda: {'MIMICExtract'})
+    batch_size: int = field(default=128)
+    test_split: int = 0.2
