@@ -1,80 +1,73 @@
+import json
+
+from torch.utils.data import DataLoader
+
 from experiments.dataset.DatasetManager import DATASET_MANAGER
 from experiments.model.ModelManager import ModelManager
-from experiments.federated_learning.FederatedLearningManager import FEDERATED_LEARNING_MANAGER
-from experiments.utils import MODEL_CHECKPOINTS_PATH
+from experiments.federated_learning.FederatedLearningManager import FederatedLearningManager
+from experiments.utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
 from experiments.xai.XAIManager import XAI_MANAGER
 from experiments.mia.MIAManager import MIA_MANAGER
 
-PRINT_WIDTH = 40
-
 
 class Experiment:
-    def __init__(self):
-        pass
+    def __init__(self, number_of_clients: list[int], epsilons: list[float]):
+        self.number_of_clients = number_of_clients
+        self.epsilons = epsilons
 
-    def run_model_training(self, federated_learning: bool = True, privatise_non_fl_models: bool = True):
+    def run_model_training(self, federated_learning: bool = True, centralised_model: bool = True):
         for dataset_name in DATASET_MANAGER.datasets:
             if federated_learning:
                 self._run_federated_learning(dataset_name)
-            else:
-                self._run(dataset_name, privatise_non_fl_models)
+            if centralised_model:
+                self._run_centralised_model(dataset_name)
 
-    def _run(self, dataset_name: str, privatise_data):
-        train_data = DATASET_MANAGER.get_train_data(dataset_name)
+    def _run_centralised_model(self, dataset_name: str):
+        for fold_index, (train_data, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
+            self._run_centralised_training(dataset_name, train_data, test_data, fold_index, use_differential_privacy=False)
 
-        model_manager = ModelManager()
-        if privatise_data:
-            model_manager.privatise_models_and_data(train_data)
+            for epsilon in self.epsilons:
+                self._run_centralised_training(dataset_name, train_data, test_data, fold_index,
+                                               use_differential_privacy=True, epsilon=epsilon)
 
-        print(f"Training target model with {dataset_name} training data")
+    @staticmethod
+    def _run_centralised_training(dataset_name: str, train_data: DataLoader, test_data: DataLoader, fold_index: int,
+                                  use_differential_privacy: bool, epsilon: float = .0):
+        model_manager = ModelManager(DATASET_MANAGER.get_number_of_features(dataset_name),
+                                     DATASET_MANAGER.get_number_of_classes(dataset_name))
+        if use_differential_privacy:
+            model_manager.privatise_models_and_data(train_data, epsilon=epsilon)
+
+        print(f"Training target model with {dataset_name} training data. Fold {fold_index}")
         model_manager.train_target_models(train_data)
-        model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model')
+        model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model',
+                                  {'privatised': use_differential_privacy, 'fl': False, 'fold': fold_index})
 
-        print(f"Testing model with {dataset_name} test data")
-        metrics = model_manager.evaluate_target_models(DATASET_MANAGER.get_test_data(dataset_name))
-        with open(RESULTS_PATH / 'non_fl_model_train_metrics.json', 'w') as f:
+        print(f"Testing model with {dataset_name} test data. Fold {fold_index}")
+        metrics = model_manager.evaluate_target_models(test_data)
+
+        file_name = f'non_fl_test_metrics_privatised={use_differential_privacy}_fl=False_fold={fold_index}.json'
+        with open(RESULTS_PATH / file_name, 'w') as f:
             json.dump(metrics, f)
 
-        print(f" Training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
+        print(f" Training results for {dataset_name}. Fold {fold_index} ".center(PRINT_WIDTH, '#'))
         for model_name, metric_scores in metrics.items():
             print(f" Model name: {model_name} ".center(PRINT_WIDTH, '_'))
             for metric_name, metric_score in metric_scores.items():
                 print(f"{metric_name}: {metric_score}")
 
     def _run_federated_learning(self, dataset_name: str):
-        FEDERATED_LEARNING_MANAGER.prepare_simulation(dataset_name)
+        for number_of_clients in self.number_of_clients:
+            fl_manager = FederatedLearningManager(privatise_models=False, number_of_clients=number_of_clients)
+            fl_manager.start_simulation(dataset_name)
 
-        results = FEDERATED_LEARNING_MANAGER.start_simulation()
-        server_model_results = FEDERATED_LEARNING_MANAGER.evaluate_server_model()
-        FEDERATED_LEARNING_MANAGER.save_server_model(MODEL_CHECKPOINTS_PATH / 'fl_server_model')
-        with open(RESULTS_PATH / 'fl_model_train_metrics.json', 'w') as f:
-            json.dump(results, f)
+            for epsilon in self.epsilons:
+                fl_manager = FederatedLearningManager(privatise_models=True, number_of_clients=number_of_clients,
+                                                      epsilon=epsilon)
+                fl_manager.start_simulation(dataset_name)
 
-        with open(RESULTS_PATH / 'non_fl_server_model_train_metrics.json', 'w') as f:
-            json.dump(server_model_results, f)
-
-        print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
-
-        print(f"Client training results".center(PRINT_WIDTH, '_'))
-        for model_name, iteration_results in results.items():
-            print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
-            for iteration, metric_scores in iteration_results:
-                print(f"Iteration {iteration}: ", end='')
-                for metric_name, metric_score in metric_scores.items():
-                    print(f"{metric_name}: {metric_score}, ", end='')
-                print()
-            print()
-        print()
-
-        print(f"Server training results".center(PRINT_WIDTH, '_'))
-        for model_name, metric_scores in server_model_results.items():
-            print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
-            for metric_name, metric_score in metric_scores.items():
-                print(f"{metric_name}: {metric_score}, ", end='')
-            print()
-            print()
-
-    def run_xai_evaluation(self, use_federated_model=True):
+    @staticmethod
+    def run_xai_evaluation(use_federated_model=True):
         for dataset_name in DATASET_MANAGER.datasets:
             print(f" XAI evaluation on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
@@ -100,7 +93,8 @@ class Experiment:
                 print()
                 print()
 
-    def run_mia(self, use_federated_model=True):
+    @staticmethod
+    def run_mia(use_federated_model=True):
         for dataset_name in DATASET_MANAGER.datasets:
             print(f" MIA on {dataset_name} ".center(PRINT_WIDTH, '#'))
 

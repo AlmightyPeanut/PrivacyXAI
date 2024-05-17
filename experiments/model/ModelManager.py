@@ -190,8 +190,8 @@ class ModelManager:
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.nn_model.load_state_dict(new_state_dict)
 
-    def privatise_models_and_data(self, data_loader: DataLoader) -> DataLoader:
-        print(f"Privatising with eps={self.config.dp_target_epsilon}")
+    def privatise_models_and_data(self, data_loader: DataLoader, epsilon: float) -> DataLoader:
+        print(f"Privatising with eps={epsilon}")
 
         new_data_loader = None
         if 'LR' in self.config.target_models:
@@ -199,7 +199,7 @@ class ModelManager:
                 module=self.lr_model,
                 optimizer=self.lr_optimizer,
                 data_loader=data_loader,
-                target_epsilon=self.config.dp_target_epsilon,
+                target_epsilon=epsilon,
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
@@ -210,7 +210,7 @@ class ModelManager:
                 module=self.nn_model,
                 optimizer=self.nn_optimizer,
                 data_loader=data_loader,
-                target_epsilon=self.config.dp_target_epsilon,
+                target_epsilon=epsilon,
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
@@ -225,10 +225,10 @@ class ModelManager:
         if not os.path.exists(model_folder_path):
             raise FileNotFoundError(f"'{model_folder_path}' does not exist")
 
-        model_parameters = ""
-        if "privatised" in parameters:
+        model_parameters = f"fold={parameters['fold']}"
+        if "privatised" in parameters and parameters["privatised"]:
             model_parameters += f"privatised_eps={self.config.dp_target_epsilon}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
-        if "fl" in parameters:
+        if "fl" in parameters and parameters["fl"]:
             model_parameters += f"fl_clients={parameters['fl_clients']}_rounds={parameters['fl_rounds']}"
 
         if 'LR' in self.config.target_models:

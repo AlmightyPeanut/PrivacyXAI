@@ -1,68 +1,107 @@
-import os
+import json
+from typing import Callable
 
 import flwr as fl
+import numpy as np
+from torch.utils.data import DataLoader
 
-from .FederatedLearningClient import get_evaluate_fn, generate_client_fn
+from .FederatedLearningClient import scalar, FederatedLearningClient
 from .FederatedLearningConfig import FederatedLearningConfig
 from .FederatedLearningStrategy import FederatedLearningStrategy
 from experiments.model.ModelManager import ModelManager
 from experiments.dataset.DatasetManager import DATASET_MANAGER
+from ..utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
 
 
 class FederatedLearningManager:
     def __init__(self,
+                 privatise_models: bool,
+                 number_of_clients: int,
+                 epsilon: float = .0,
                  config: FederatedLearningConfig = FederatedLearningConfig()):
         self.config = config
+        self.use_differential_privacy = privatise_models
+        self.number_of_clients = number_of_clients
+        self.epsilon = epsilon
 
-        self.federated_learning_strategy = None
-        self.client_fn_callback = None
-        self.current_dataset = None
-        self.model_manager = None
+    def start_simulation(self, dataset_name: str) -> None:
+        fold_results = {}
+        number_of_features = DATASET_MANAGER.get_number_of_features(dataset_name)
+        number_of_classes = DATASET_MANAGER.get_number_of_classes(dataset_name)
 
-    def prepare_simulation(self, dataset_name: str) -> None:
-        self.current_dataset = dataset_name
-        test_data = DATASET_MANAGER.get_test_data(self.current_dataset)
+        for fold_index, (train_data, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
+            federated_learning_strategy = FederatedLearningStrategy(
+                fraction_fit=self.config.fraction_fit,
+                fraction_evaluate=self.config.fraction_evaluate,
+                min_available_clients=self.number_of_clients,
+                evaluate_fn=self.get_evaluate_fn(test_data, number_of_features, number_of_classes),
+            )
 
-        self.federated_learning_strategy = FederatedLearningStrategy(
-            fraction_fit=self.config.fraction_fit,
-            fraction_evaluate=self.config.fraction_evaluate,
-            min_available_clients=self.config.number_of_clients,
-            evaluate_fn=get_evaluate_fn(test_data)
-        )
+            train_data_loaders = DATASET_MANAGER.split_data_for_federated_learning(train_data,
+                                                                                   self.number_of_clients)
+            client_fn_callback = self.generate_client_fn(train_data_loaders, number_of_features, number_of_classes)
 
-        train_data_loaders, validation_data_loaders = DATASET_MANAGER.get_federated_learning_data_loaders(
-            self.current_dataset, self.config.number_of_clients, self.config.validation_split)
+            history = fl.simulation.start_simulation(
+                client_fn=client_fn_callback,
+                num_clients=self.number_of_clients,
+                config=fl.server.ServerConfig(num_rounds=self.config.num_rounds),
+                strategy=federated_learning_strategy,
+            )
 
-        self.client_fn_callback = generate_client_fn(train_data_loaders, validation_data_loaders,
-                                                     self.config.privatise_models)
-        self.model_manager = ModelManager()
+            fold_result = history.metrics_centralized
+            file_name = f'fl_model_metrics_privatised={self.use_differential_privacy}_fl=True_fold={fold_index}.json'
+            with open(RESULTS_PATH / file_name, 'w') as f:
+                json.dump(fold_results, f)
+            fold_results[fold_index] = fold_result
 
-    def start_simulation(self):
-        history = fl.simulation.start_simulation(
-            client_fn=self.client_fn_callback,
-            num_clients=self.config.number_of_clients,
-            config=fl.server.ServerConfig(num_rounds=self.config.num_rounds),
-            strategy=self.federated_learning_strategy,
-        )
-        return history.metrics_centralized
+            print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
+            print(f"Client training results".center(PRINT_WIDTH, '_'))
+            for model_name, iteration_results in fold_result.items():
+                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
+                for iteration, metric_scores in iteration_results:
+                    print(f"Iteration {iteration}: ", end='')
+                    for metric_name, metric_score in metric_scores.items():
+                        print(f"{metric_name}: {metric_score}, ", end='')
+                    print()
+                print()
+            print()
 
-    def evaluate_server_model(self) -> dict[str, dict[str, float]]:
-        self.model_manager.set_parameters_of_models(self.federated_learning_strategy.get_parameters_of_models())
-        evaluation_scores = self.model_manager.evaluate_target_models(
-            DATASET_MANAGER.get_test_data(self.current_dataset))
-        return evaluation_scores
+            # save server model
+            model_manager = ModelManager(number_of_features, number_of_classes)
+            model_manager.set_parameters_of_models(federated_learning_strategy.get_parameters_of_models())
+            fl_parameters = {
+                "fl": True,
+                "fl_clients": self.number_of_clients,
+                "fl_rounds": self.config.num_rounds,
+                "privatised": self.use_differential_privacy,
+                "fold": fold_index,
+            }
+            model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'fl_server_model', fl_parameters)
 
-    def save_server_model(self, model_folder_path: os.PathLike) -> None:
-        fl_parameters = {
-            "fl": True,
-            "fl_clients": self.config.number_of_clients,
-            "fl_rounds": self.config.num_rounds,
-            "privatised": self.config.privatise_models,
-        }
-        self.model_manager.save_models(model_folder_path, fl_parameters)
+    def generate_client_fn(self, train_data_loaders: list[DataLoader], number_of_features: int,
+                           number_of_classes: int) -> Callable:
+        def generate_client(client_id: str) -> FederatedLearningClient:
+            client_id = int(client_id)
+            return FederatedLearningClient(
+                train_data_loaders[client_id],
+                number_of_features,
+                number_of_classes,
+                self.use_differential_privacy,
+                self.epsilon
+            )
 
-    def get_server_model_parameters(self):
-        return self.federated_learning_strategy.get_parameters_of_models()
+        return generate_client
 
+    @staticmethod
+    def get_evaluate_fn(test_data_loader: DataLoader, number_of_features: int, number_of_classes: int) -> Callable:
+        """ Server evaluation function. Does not return a loss value."""
 
-FEDERATED_LEARNING_MANAGER = FederatedLearningManager()
+        def evaluate(server_round: int, parameters_of_models: list[np.array],
+                     config: dict[str, scalar]) -> (float, dict[dict[str, scalar]]):
+            model_manager = ModelManager(number_of_features, number_of_classes)
+            model_manager.set_parameters_of_models(parameters_of_models)
+            evaluation_scores = model_manager.evaluate_target_models(test_data_loader)
+
+            return .0, evaluation_scores
+
+        return evaluate
