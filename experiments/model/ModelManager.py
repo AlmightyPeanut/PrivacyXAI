@@ -227,7 +227,7 @@ class ModelManager:
 
         model_parameters = f"fold={parameters['fold']}"
         if "privatised" in parameters and parameters["privatised"]:
-            model_parameters += f"privatised_eps={self.config.dp_target_epsilon}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
+            model_parameters += f"privatised_eps={parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
         if "fl" in parameters and parameters["fl"]:
             model_parameters += f"fl_clients={parameters['fl_clients']}_rounds={parameters['fl_rounds']}"
 

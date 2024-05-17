@@ -74,6 +74,7 @@ class FederatedLearningManager:
                 "fl_clients": self.number_of_clients,
                 "fl_rounds": self.config.num_rounds,
                 "privatised": self.use_differential_privacy,
+                "epsilon": self.epsilon,
                 "fold": fold_index,
             }
             model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'fl_server_model', fl_parameters)

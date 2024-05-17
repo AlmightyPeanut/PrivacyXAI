@@ -41,7 +41,8 @@ class Experiment:
         print(f"Training target model with {dataset_name} training data. Fold {fold_index}")
         model_manager.train_target_models(train_data)
         model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model',
-                                  {'privatised': use_differential_privacy, 'fl': False, 'fold': fold_index})
+                                  {'privatised': use_differential_privacy, 'fl': False, 'fold': fold_index,
+                                   'epsilon': epsilon})
 
         print(f"Testing model with {dataset_name} test data. Fold {fold_index}")
         metrics = model_manager.evaluate_target_models(test_data)
