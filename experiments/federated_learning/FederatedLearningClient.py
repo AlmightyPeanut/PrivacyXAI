@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from experiments.model.ModelManager import ModelManager
 
 # python 3.9 compatability
-scalar = Union[bool | bytes | float | int | str]
+scalar = Union[bool, bytes, float, int, str]
 
 
 class FederatedLearningClient(fl.client.NumPyClient):
