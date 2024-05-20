@@ -1,10 +1,13 @@
+from typing import Union
+
 import flwr as fl
 import numpy as np
 from torch.utils.data import DataLoader
 
 from experiments.model.ModelManager import ModelManager
 
-scalar = bool | bytes | float | int | str
+# python 3.9 compatability
+scalar = Union[bool | bytes | float | int | str]
 
 
 class FederatedLearningClient(fl.client.NumPyClient):
