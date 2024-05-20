@@ -18,8 +18,8 @@ class FederatedLearningStrategy(fl.server.strategy.FedAvg):
         self,
         server_round: int,
         results: list[(ClientProxy, FitRes)],
-        failures: list[Union[Tuple[ClientProxy, FitRes] | BaseException]],
-    ) -> (Parameters | None, dict[str, scalar]):
+        failures: list[Union[tuple[ClientProxy, FitRes], BaseException]],
+    ) -> (Union[Parameters, None], dict[str, scalar]):
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures)
 
         if aggregated_parameters is not None:

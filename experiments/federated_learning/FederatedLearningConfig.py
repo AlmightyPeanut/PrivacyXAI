@@ -10,3 +10,4 @@ class FederatedLearningConfig:
     fraction_fit: float = 1.0
     fraction_evaluate: float = 1.0
     num_rounds: int = 20
+    fraction_evaluate: float = .0
