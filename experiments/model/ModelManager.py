@@ -21,7 +21,6 @@ elif torch.backends.mps.is_available():
     TORCH_DEVICE = torch.device("mps")
 else:
     TORCH_DEVICE = torch.device("cpu")
-TORCH_DEVICE = torch.device("cpu")
 
 torch.manual_seed(42)
 
