@@ -3,6 +3,7 @@ from typing import Callable
 
 import flwr as fl
 import numpy as np
+from flwr.client import Client
 from torch.utils.data import DataLoader
 
 from .FederatedLearningClient import scalar, FederatedLearningClient
@@ -78,11 +79,9 @@ class FederatedLearningManager:
             }
             model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'fl_server_model', fl_parameters)
 
-            break
-
     def generate_client_fn(self, train_data_loaders: list[DataLoader], number_of_features: int,
                            number_of_classes: int) -> Callable:
-        def generate_client(client_id: str) -> FederatedLearningClient:
+        def generate_client(client_id: str) -> Client:
             client_id = int(client_id)
             return FederatedLearningClient(
                 train_data_loaders[client_id],
@@ -91,7 +90,7 @@ class FederatedLearningManager:
                 self.use_differential_privacy,
                 self.epsilon,
                 self.config.client_training_epochs
-            )
+            ).to_client()
 
         return generate_client
 

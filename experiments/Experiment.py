@@ -6,7 +6,7 @@ from experiments.dataset.DatasetManager import DATASET_MANAGER
 from experiments.model.ModelManager import ModelManager
 from experiments.federated_learning.FederatedLearningManager import FederatedLearningManager
 from experiments.utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
-from experiments.xai.XAIManager import XAI_MANAGER
+from experiments.xai.XAIManager import XAIManager
 from experiments.mia.MIAManager import MIA_MANAGER
 
 
@@ -67,15 +67,24 @@ class Experiment:
                                                       epsilon=epsilon)
                 fl_manager.start_simulation(dataset_name)
 
-    @staticmethod
-    def run_xai_evaluation(use_federated_model=True):
+    def run_xai_evaluation(self, use_federated_model=True, use_centralised_model=True):
         for dataset_name in DATASET_MANAGER.datasets:
             print(f" XAI evaluation on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
+            model_paths = []
             if use_federated_model:
                 model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
-            else:
+                for model_file in model_path.iterdir():
+                    if not str(model_file).endswith('.pth'):
+                        continue
+                    model_paths.append(model_path / model_file)
+
+            if use_centralised_model:
                 model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
+                for model_file in model_path.iterdir():
+                    if not str(model_file).endswith('.pth'):
+                        continue
+                    model_paths.append(model_path / model_file)
 
             xai_scores = XAI_MANAGER.evaluate_explanations(DATASET_MANAGER.get_test_data(dataset_name), model_path)
             json_file_name = 'fl_model_xai_metrics.json'
@@ -93,6 +102,12 @@ class Experiment:
                     print()
                 print()
                 print()
+            for fold_index, (_, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
+                fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
+                XAIManager().evaluate_explanations(test_data,
+                                                   DATASET_MANAGER.get_number_of_features(dataset_name),
+                                                   DATASET_MANAGER.get_number_of_classes(dataset_name),
+                                                   fold_models)
 
     @staticmethod
     def run_mia(use_federated_model=True):
