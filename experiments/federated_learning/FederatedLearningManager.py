@@ -46,13 +46,13 @@ class FederatedLearningManager:
                 num_clients=self.number_of_clients,
                 config=fl.server.ServerConfig(num_rounds=self.config.num_rounds),
                 strategy=federated_learning_strategy,
+                client_resources=self.config.client_resources,
             )
 
             fold_result = history.metrics_centralized
             file_name = f'fl_model_metrics_privatised={self.use_differential_privacy}_fl=True_fold={fold_index}.json'
             with open(RESULTS_PATH / file_name, 'w') as f:
-                json.dump(fold_results, f)
-            fold_results[fold_index] = fold_result
+                json.dump(fold_result, f)
 
             print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
             print(f"Client training results".center(PRINT_WIDTH, '_'))

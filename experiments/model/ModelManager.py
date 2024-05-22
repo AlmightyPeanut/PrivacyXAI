@@ -15,13 +15,6 @@ from .LRClassifier import LRClassifier
 from .ModelConfig import ModelConfig
 from .NNClassifier import NNClassifier
 
-if torch.cuda.is_available():
-    TORCH_DEVICE = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    TORCH_DEVICE = torch.device("mps")
-else:
-    TORCH_DEVICE = torch.device("cpu")
-
 torch.manual_seed(42)
 
 # These start and end symbols for the parameters of each model have to be numbers
@@ -37,6 +30,13 @@ class NoValidModelSpecified(Exception):
 
 class ModelManager:
     def __init__(self, number_of_features, number_of_classes, config: ModelConfig = ModelConfig()):
+        if torch.cuda.is_available():
+            self.TORCH_DEVICE = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self.TORCH_DEVICE = torch.device("mps")
+        else:
+            self.TORCH_DEVICE = torch.device("cpu")
+
         self.number_of_features = number_of_features
         self.number_of_classes = number_of_classes
         self.config = config
@@ -47,7 +47,7 @@ class ModelManager:
         self.privacy_engine = PrivacyEngine()
 
         if 'LR' in self.config.target_models:
-            self.lr_model = LRClassifier(self.number_of_features, self.number_of_classes).to(TORCH_DEVICE)
+            self.lr_model = LRClassifier(self.number_of_features, self.number_of_classes).to(self.TORCH_DEVICE)
             self.lr_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.lr_loss_function = nn.CrossEntropyLoss()
@@ -55,7 +55,7 @@ class ModelManager:
 
         if 'NN' in self.config.target_models:
             self.nn_model = NNClassifier(number_of_features=self.number_of_features,
-                                         number_of_classes=self.number_of_classes).to(TORCH_DEVICE)
+                                         number_of_classes=self.number_of_classes).to(self.TORCH_DEVICE)
             self.nn_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
@@ -95,9 +95,9 @@ class ModelManager:
             pbar.update()
 
     def _train_lr_model_one_batch(self, batch_data: dict[str, np.ndarray]) -> float:
-        outputs = self.lr_model(torch.tensor(batch_data['features'], dtype=torch.float, device=TORCH_DEVICE))
+        outputs = self.lr_model(torch.tensor(batch_data['features'], dtype=torch.float, device=self.TORCH_DEVICE))
         loss = self.lr_loss_function(outputs,
-                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=TORCH_DEVICE))
+                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=self.TORCH_DEVICE))
 
         self.lr_optimizer.zero_grad()
         loss.backward()
@@ -106,9 +106,9 @@ class ModelManager:
         return loss.item()
 
     def _train_nn_model_one_batch(self, batch_data: dict[str, np.array]) -> float:
-        outputs = self.nn_model(torch.tensor(batch_data['features'], dtype=torch.float, device=TORCH_DEVICE))
+        outputs = self.nn_model(torch.tensor(batch_data['features'], dtype=torch.float, device=self.TORCH_DEVICE))
         loss = self.nn_loss_function(outputs,
-                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=TORCH_DEVICE))
+                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=self.TORCH_DEVICE))
 
         self.nn_optimizer.zero_grad()
         loss.backward()
@@ -236,15 +236,15 @@ class ModelManager:
         if 'NN' in self.config.target_models:
             torch.save(self.nn_model.state_dict(), os.path.join(model_folder_path, f'nn_model{model_parameters}.pth'))
 
-    def load_models(self, model_folder_path: os.PathLike) -> None:
-        if not os.path.exists(model_folder_path):
-            raise FileNotFoundError(f"'{model_folder_path}' does not exist")
+    def load_model(self, model_file_path: os.PathLike) -> None:
+        if not os.path.exists(model_file_path):
+            raise FileNotFoundError(f"'{model_file_path}' does not exist")
 
-        if 'LR' in self.config.target_models:
-            self.lr_model.load_state_dict(torch.load(os.path.join(model_folder_path, 'lr_model.pth')))
+        if str(model_file_path).startswith('lr'):
+            self.lr_model.load_state_dict(torch.load(os.path.join(model_file_path)))
 
-        if 'NN' in self.config.target_models:
-            self.nn_model.load_state_dict(torch.load(os.path.join(model_folder_path, 'nn_model.pth')))
+        if str(model_file_path).startswith('nn'):
+            self.nn_model.load_state_dict(torch.load(os.path.join(model_file_path)))
 
     def prepare_models_for_mia(self) -> dict[str, PyTorchClassifier]:
         models = {}
@@ -274,14 +274,14 @@ class ModelManager:
             self.lr_model.eval()
             with torch.no_grad():
                 class_probabilities = self.lr_model(
-                    torch.tensor(data, dtype=torch.float32, device=TORCH_DEVICE)).detach().numpy()
+                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().numpy()
             prediction_logits['LR'] = class_probabilities
 
         if 'NN' in self.config.target_models:
             self.nn_model.eval()
             with torch.no_grad():
                 class_probabilities = self.nn_model(
-                    torch.tensor(data, dtype=torch.float32, device=TORCH_DEVICE)).detach().numpy()
+                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().numpy()
             prediction_logits['NN'] = class_probabilities
 
         return prediction_logits

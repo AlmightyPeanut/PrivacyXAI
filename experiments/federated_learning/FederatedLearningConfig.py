@@ -8,6 +8,10 @@ class FederatedLearningConfig:
 
     # TODO: improve namings
     fraction_fit: float = 1.0
-    fraction_evaluate: float = 1.0
-    num_rounds: int = 20
     fraction_evaluate: float = .0
+    num_rounds: int = 1
+
+    client_resources = {
+        "num_cpus": 2,
+        "num_gpus": 1,
+    }
