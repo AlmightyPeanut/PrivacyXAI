@@ -86,22 +86,6 @@ class Experiment:
                         continue
                     model_paths.append(model_path / model_file)
 
-            xai_scores = XAI_MANAGER.evaluate_explanations(DATASET_MANAGER.get_test_data(dataset_name), model_path)
-            json_file_name = 'fl_model_xai_metrics.json'
-            if not use_federated_model:
-                json_file_name = 'non_' + json_file_name
-            with open(RESULTS_PATH / json_file_name, 'w') as f:
-                json.dump(xai_scores, f)
-
-            for model_name, metric_scores in xai_scores.items():
-                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
-                for metric_name, xai_metric_scores in metric_scores.items():
-                    print(f"{metric_name}".center(PRINT_WIDTH, '_'))
-                    for xai_metric_name, xai_metric_score in xai_metric_scores.items():
-                        print(f"{xai_metric_name}: {xai_metric_score}, ", end='')
-                    print()
-                print()
-                print()
             for fold_index, (_, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
                 fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
                 XAIManager().evaluate_explanations(test_data,
