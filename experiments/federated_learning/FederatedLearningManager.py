@@ -25,7 +25,6 @@ class FederatedLearningManager:
         self.epsilon = epsilon
 
     def start_simulation(self, dataset_name: str) -> None:
-        fold_results = {}
         number_of_features = DATASET_MANAGER.get_number_of_features(dataset_name)
         number_of_classes = DATASET_MANAGER.get_number_of_classes(dataset_name)
 
@@ -79,6 +78,8 @@ class FederatedLearningManager:
             }
             model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'fl_server_model', fl_parameters)
 
+            break
+
     def generate_client_fn(self, train_data_loaders: list[DataLoader], number_of_features: int,
                            number_of_classes: int) -> Callable:
         def generate_client(client_id: str) -> FederatedLearningClient:
@@ -88,7 +89,8 @@ class FederatedLearningManager:
                 number_of_features,
                 number_of_classes,
                 self.use_differential_privacy,
-                self.epsilon
+                self.epsilon,
+                self.config.client_training_epochs
             )
 
         return generate_client

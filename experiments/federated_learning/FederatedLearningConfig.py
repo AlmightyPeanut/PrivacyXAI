@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -11,7 +11,8 @@ class FederatedLearningConfig:
     fraction_evaluate: float = .0
     num_rounds: int = 1
 
-    client_resources = {
+    client_training_epochs: int = 1
+    client_resources: dict = field(default_factory=lambda: {
         "num_cpus": 2,
         "num_gpus": 1,
-    }
+    })

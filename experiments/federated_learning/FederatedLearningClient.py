@@ -4,6 +4,7 @@ import flwr as fl
 import numpy as np
 from torch.utils.data import DataLoader
 
+from experiments.model.ModelConfig import ModelConfig
 from experiments.model.ModelManager import ModelManager
 
 # python 3.9 compatability
@@ -12,13 +13,15 @@ scalar = Union[bool, bytes, float, int, str]
 
 class FederatedLearningClient(fl.client.NumPyClient):
     def __init__(self, train_data: DataLoader, number_of_features: int, number_of_classes: int, privatise_models: bool,
-                 epsilon: float = .0):
+                 epsilon: float = .0, local_training_rounds: int = 1):
         super().__init__()
         self.train_data = train_data
 
         self.train_data_size = len(train_data)
 
-        self.model_manager = ModelManager(number_of_features, number_of_classes)
+        model_config = ModelConfig()
+        model_config.number_of_epochs = 1
+        self.model_manager = ModelManager(number_of_features, number_of_classes, config=model_config)
         if privatise_models:
             self.model_manager.privatise_models_and_data(train_data, epsilon)
 
