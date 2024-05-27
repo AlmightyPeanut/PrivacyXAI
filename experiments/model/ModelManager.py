@@ -1,3 +1,4 @@
+import json
 import os
 from collections import OrderedDict
 
@@ -14,6 +15,7 @@ from torch.utils.data import DataLoader
 from .LRClassifier import LRClassifier
 from .ModelConfig import ModelConfig
 from .NNClassifier import NNClassifier
+from ..utils import RESULTS_PATH, PRINT_WIDTH
 
 torch.manual_seed(42)
 
@@ -116,7 +118,7 @@ class ModelManager:
 
         return loss.item()
 
-    def evaluate_target_models(self, test_data: DataLoader) -> dict[str, dict[str, float]]:
+    def evaluate_target_models(self, test_data: DataLoader, fold_index: int, model_parameters: dict) -> None:
         test_data_samples = next(iter(test_data))
         evaluation_results = dict()
 
@@ -147,7 +149,20 @@ class ModelManager:
                 "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
             }
 
-        return evaluation_results
+        file_name = f"centralised_model_metrics_fold={fold_index}"
+        if "privatised" in model_parameters and model_parameters["privatised"]:
+            file_name += f"_privatised_eps={model_parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
+        if "fl" in model_parameters and model_parameters["fl"]:
+            file_name += f"_fl_clients={model_parameters['fl_clients']}_rounds={model_parameters['fl_rounds']}"
+        file_name = f'{file_name}.json'
+        with open(RESULTS_PATH / file_name, 'w') as f:
+            json.dump(evaluation_results, f)
+
+        print(f" Training results for fold {fold_index} ".center(PRINT_WIDTH, '#'))
+        for model_name, metric_scores in evaluation_results.items():
+            print(f" Model name: {model_name} ".center(PRINT_WIDTH, '_'))
+            for metric_name, metric_score in metric_scores.items():
+                print(f"{metric_name}: {metric_score}")
 
     def get_parameters_of_models(self) -> list[np.array]:
         parameters_of_models = []
@@ -226,15 +241,15 @@ class ModelManager:
 
         model_parameters = f"fold={parameters['fold']}"
         if "privatised" in parameters and parameters["privatised"]:
-            model_parameters += f"privatised_eps={parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
+            model_parameters += f"_privatised_eps={parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
         if "fl" in parameters and parameters["fl"]:
-            model_parameters += f"fl_clients={parameters['fl_clients']}_rounds={parameters['fl_rounds']}"
+            model_parameters += f"_fl_clients={parameters['fl_clients']}_rounds={parameters['fl_rounds']}"
 
         if 'LR' in self.config.target_models:
             torch.save(self.lr_model.state_dict(), os.path.join(model_folder_path, f'lr_model_{model_parameters}.pth'))
 
         if 'NN' in self.config.target_models:
-            torch.save(self.nn_model.state_dict(), os.path.join(model_folder_path, f'nn_model{model_parameters}.pth'))
+            torch.save(self.nn_model.state_dict(), os.path.join(model_folder_path, f'nn_model_{model_parameters}.pth'))
 
     def load_model(self, model_file_path: os.PathLike) -> None:
         if not os.path.exists(model_file_path):

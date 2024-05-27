@@ -24,7 +24,8 @@ class Experiment:
 
     def _run_centralised_model(self, dataset_name: str):
         for fold_index, (train_data, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
-            self._run_centralised_training(dataset_name, train_data, test_data, fold_index, use_differential_privacy=False)
+            self._run_centralised_training(dataset_name, train_data, test_data, fold_index,
+                                           use_differential_privacy=False)
 
             for epsilon in self.epsilons:
                 self._run_centralised_training(dataset_name, train_data, test_data, fold_index,
@@ -45,17 +46,11 @@ class Experiment:
                                    'epsilon': epsilon})
 
         print(f"Testing model with {dataset_name} test data. Fold {fold_index}")
-        metrics = model_manager.evaluate_target_models(test_data)
-
-        file_name = f'non_fl_test_metrics_privatised={use_differential_privacy}_fl=False_fold={fold_index}.json'
-        with open(RESULTS_PATH / file_name, 'w') as f:
-            json.dump(metrics, f)
-
-        print(f" Training results for {dataset_name}. Fold {fold_index} ".center(PRINT_WIDTH, '#'))
-        for model_name, metric_scores in metrics.items():
-            print(f" Model name: {model_name} ".center(PRINT_WIDTH, '_'))
-            for metric_name, metric_score in metric_scores.items():
-                print(f"{metric_name}: {metric_score}")
+        model_manager.evaluate_target_models(test_data, fold_index, {
+            'privatised': use_differential_privacy,
+            'epsilon': epsilon,
+            'fl': False,
+        })
 
     def _run_federated_learning(self, dataset_name: str):
         for number_of_clients in self.number_of_clients:

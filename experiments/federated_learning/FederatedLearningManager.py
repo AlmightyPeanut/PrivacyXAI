@@ -50,7 +50,10 @@ class FederatedLearningManager:
             )
 
             fold_result = history.metrics_centralized
-            file_name = f'fl_model_metrics_privatised={self.use_differential_privacy}_fl=True_fold={fold_index}.json'
+            file_name = f'fl_model_metrics_fl=True_clients={self.number_of_clients}_rounds={self.config.num_rounds}_fold={fold_index}'
+            if self.use_differential_privacy:
+                file_name += f'_privatised_epsilon={self.epsilon}'
+            file_name += '.json'
             with open(RESULTS_PATH / file_name, 'w') as f:
                 json.dump(fold_result, f)
 
