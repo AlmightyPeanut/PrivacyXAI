@@ -293,14 +293,14 @@ class ModelManager:
             self.lr_model.eval()
             with torch.no_grad():
                 class_probabilities = self.lr_model(
-                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().numpy()
+                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().cpu().numpy()
             prediction_logits['LR'] = class_probabilities
 
         if 'NN' in self.config.target_models:
             self.nn_model.eval()
             with torch.no_grad():
                 class_probabilities = self.nn_model(
-                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().numpy()
+                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().cpu().numpy()
             prediction_logits['NN'] = class_probabilities
 
         return prediction_logits
