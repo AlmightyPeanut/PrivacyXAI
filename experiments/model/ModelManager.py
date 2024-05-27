@@ -118,7 +118,8 @@ class ModelManager:
 
         return loss.item()
 
-    def evaluate_target_models(self, test_data: DataLoader, fold_index: int, model_parameters: dict) -> None:
+    def evaluate_target_models(self, test_data: DataLoader, fold_index: int, model_parameters: dict,
+                               save_results: bool = True) -> dict[str, dict[str, float]]:
         test_data_samples = next(iter(test_data))
         evaluation_results = dict()
 
@@ -149,20 +150,23 @@ class ModelManager:
                 "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
             }
 
-        file_name = f"centralised_model_metrics_fold={fold_index}"
-        if "privatised" in model_parameters and model_parameters["privatised"]:
-            file_name += f"_privatised_eps={model_parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
-        if "fl" in model_parameters and model_parameters["fl"]:
-            file_name += f"_fl_clients={model_parameters['fl_clients']}_rounds={model_parameters['fl_rounds']}"
-        file_name = f'{file_name}.json'
-        with open(RESULTS_PATH / file_name, 'w') as f:
-            json.dump(evaluation_results, f)
+        if save_results:
+            file_name = f"centralised_model_metrics_fold={fold_index}"
+            if "privatised" in model_parameters and model_parameters["privatised"]:
+                file_name += f"_privatised_eps={model_parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
+            if "fl" in model_parameters and model_parameters["fl"]:
+                file_name += f"_fl_clients={model_parameters['fl_clients']}_rounds={model_parameters['fl_rounds']}"
+            file_name = f'{file_name}.json'
+            with open(RESULTS_PATH / file_name, 'w') as f:
+                json.dump(evaluation_results, f)
 
-        print(f" Training results for fold {fold_index} ".center(PRINT_WIDTH, '#'))
-        for model_name, metric_scores in evaluation_results.items():
-            print(f" Model name: {model_name} ".center(PRINT_WIDTH, '_'))
-            for metric_name, metric_score in metric_scores.items():
-                print(f"{metric_name}: {metric_score}")
+            print(f" Training results for fold {fold_index} ".center(PRINT_WIDTH, '#'))
+            for model_name, metric_scores in evaluation_results.items():
+                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '_'))
+                for metric_name, metric_score in metric_scores.items():
+                    print(f"{metric_name}: {metric_score}")
+
+        return evaluation_results
 
     def get_parameters_of_models(self) -> list[np.array]:
         parameters_of_models = []

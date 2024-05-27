@@ -105,7 +105,7 @@ class FederatedLearningManager:
                      config: dict[str, scalar]) -> (float, dict[dict[str, scalar]]):
             model_manager = ModelManager(number_of_features, number_of_classes)
             model_manager.set_parameters_of_models(parameters_of_models)
-            evaluation_scores = model_manager.evaluate_target_models(test_data_loader)
+            evaluation_scores = model_manager.evaluate_target_models(test_data_loader, 0, {}, False)
 
             return .0, evaluation_scores
 
