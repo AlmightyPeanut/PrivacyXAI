@@ -46,7 +46,7 @@ class ModelManager:
         if not self.config.target_models:
             raise NoValidModelSpecified
 
-        self.privacy_engine = PrivacyEngine()
+        self.privacy_engine = PrivacyEngine(accountant='rdp')
 
         if 'LR' in self.config.target_models:
             self.lr_model = LRClassifier(self.number_of_features, self.number_of_classes).to(self.TORCH_DEVICE)
