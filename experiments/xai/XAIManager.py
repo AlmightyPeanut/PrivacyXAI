@@ -70,12 +70,19 @@ class XAIManager:
                               model_paths: list[os.PathLike]) -> None:
         data = next(iter(data))
 
+        done_models = [p for p in os.listdir(RESULTS_PATH / 'xai') if p.endswith('.json')]
+
         for model_file in model_paths:
+            model_xai_file = os.path.basename(model_file)[:-3] + 'json'
+            if model_xai_file in done_models:
+                continue
+
             if not os.path.exists(model_file):
                 raise ValueError(f"Model path {model_file} does not exist!")
 
             if 'lr_model' in str(model_file):
                 model = LRClassifier(number_of_features, number_of_classes)
+                continue
             elif 'nn_model' in str(model_file):
                 model = NNClassifier(number_of_features, number_of_classes)
             else:
@@ -85,8 +92,7 @@ class XAIManager:
             print(f"Evaluating model {model_file}...")
             eval_scores = self._evaluate_model_explanations(data, model, number_of_classes)
 
-            json_file_name = str(model_file).split('/')[-1][:-3] + "json"
-            with open(RESULTS_PATH / 'xai' / json_file_name, 'w') as f:
+            with open(RESULTS_PATH / 'xai' / model_xai_file, 'w') as f:
                 json.dump(eval_scores, f)
 
             print(f" Model name: {str(model_file).split('/')[-1][:-3]} ".center(PRINT_WIDTH, '-'))
@@ -98,4 +104,3 @@ class XAIManager:
             print()
             print()
 
-XAI_MANAGER = XAIManager()
