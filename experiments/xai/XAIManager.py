@@ -23,6 +23,17 @@ else:
 torch.manual_seed(42)
 
 
+def remove_model_prefix(state_dict, prefix: str):
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith(prefix):
+            new_key = k[:-len(prefix)]  # remove prefix
+        else:
+            new_key = k
+        new_state_dict[new_key] = v
+    return new_state_dict
+
+
 class XAIManager:
     def __init__(self, config: XAIConfig = XAIConfig()):
         self.config = config
@@ -87,7 +98,7 @@ class XAIManager:
                 model = NNClassifier(number_of_features, number_of_classes)
             else:
                 raise ValueError(f"Model path {model_file} is not a valid model path!")
-            model.load_state_dict(torch.load(model_file))
+            model.load_state_dict(remove_model_prefix(torch.load(model_file), '_module.'))
 
             print(f"Evaluating model {model_file}...")
             eval_scores = self._evaluate_model_explanations(data, model, number_of_classes)
@@ -103,4 +114,3 @@ class XAIManager:
                 print()
             print()
             print()
-
