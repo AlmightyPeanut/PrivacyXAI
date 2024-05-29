@@ -27,7 +27,7 @@ def remove_model_prefix(state_dict, prefix: str):
     new_state_dict = {}
     for k, v in state_dict.items():
         if k.startswith(prefix):
-            new_key = k[:-len(prefix)]  # remove prefix
+            new_key = k[len(prefix):]  # remove prefix
         else:
             new_key = k
         new_state_dict[new_key] = v
