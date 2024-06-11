@@ -135,7 +135,8 @@ class ModelManager:
                 "AUROC": roc_auc_score(test_data_samples['classes'], prediction_logits['LR'],
                                        multi_class='ovr', average='macro'),
                 "Acc": accuracy_score(test_data_samples['classes'], prediction_classes),
-                "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
+                "Macro F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='macro'),
+                "Binary F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
             }
 
         if 'NN' in self.config.target_models:
@@ -147,7 +148,8 @@ class ModelManager:
                 "AUROC": roc_auc_score(test_data_samples['classes'], prediction_logits['NN'],
                                        multi_class='ovr', average='macro'),
                 "Acc": accuracy_score(test_data_samples['classes'], prediction_classes),
-                "F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
+                "Macro F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='macro'),
+                "Binary F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
             }
 
         if save_results:
