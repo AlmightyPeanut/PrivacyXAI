@@ -7,4 +7,4 @@ SUPPORTED_DATASETS = {'MIMIC', 'Iris', 'MIMICExtract', 'BreastCancer'}
 class DatasetConfig:
     datasets: set = field(default_factory=lambda: {'MIMICExtract'})
     batch_size: int = field(default=128)
-    kfolds: int = 5
+    kfolds: int = 10
