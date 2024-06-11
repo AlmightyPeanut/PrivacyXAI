@@ -208,12 +208,12 @@ class ModelManager:
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.nn_model.load_state_dict(new_state_dict)
 
-    def privatise_models_and_data(self, data_loader: DataLoader, epsilon: float) -> DataLoader:
+    def privatise_models_and_data(self, data_loader: DataLoader, epsilon: float):
         print(f"Privatising with eps={epsilon}")
 
-        new_data_loader = None
+        # new_data_loader = None
         if 'LR' in self.config.target_models:
-            self.lr_model, self.lr_optimizer, new_data_loader = self.privacy_engine.make_private_with_epsilon(
+            self.lr_model, self.lr_optimizer, _ = self.privacy_engine.make_private_with_epsilon(
                 module=self.lr_model,
                 optimizer=self.lr_optimizer,
                 data_loader=data_loader,
@@ -221,10 +221,11 @@ class ModelManager:
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
+                poisson_sampling=False,
             )
 
         if 'NN' in self.config.target_models:
-            self.nn_model, self.nn_optimizer, new_data_loader = self.privacy_engine.make_private_with_epsilon(
+            self.nn_model, self.nn_optimizer, _ = self.privacy_engine.make_private_with_epsilon(
                 module=self.nn_model,
                 optimizer=self.nn_optimizer,
                 data_loader=data_loader,
@@ -232,12 +233,13 @@ class ModelManager:
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
+                poisson_sampling=False,
             )
 
-        if new_data_loader is not None:
-            # TODO: data loader is never used
-            return new_data_loader
-        return data_loader
+        # if new_data_loader is not None:
+        #     # TODO: data loader is never used
+        #     return new_data_loader
+        # return data_loader
 
     def save_models(self, model_folder_path: os.PathLike, parameters: dict) -> None:
         if not os.path.exists(model_folder_path):
