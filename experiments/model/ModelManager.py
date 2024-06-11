@@ -9,7 +9,7 @@ from art.estimators.classification import PyTorchClassifier
 from opacus import PrivacyEngine
 from sklearn.metrics import f1_score, roc_auc_score, accuracy_score
 from torch import nn
-from torch.optim import SGD
+from torch.optim import SGD, AdamW
 from torch.utils.data import DataLoader
 
 from .LRClassifier import LRClassifier
@@ -53,7 +53,7 @@ class ModelManager:
             self.lr_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.lr_loss_function = nn.CrossEntropyLoss()
-            self.lr_optimizer = SGD(self.lr_model.parameters(), lr=0.01, weight_decay=0.001)
+            self.lr_optimizer = SGD(self.lr_model.parameters(), lr=0.001)  # , weight_decay=0.001)
 
         if 'NN' in self.config.target_models:
             self.nn_model = NNClassifier(number_of_features=self.number_of_features,
@@ -61,7 +61,7 @@ class ModelManager:
             self.nn_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
-            self.nn_optimizer = SGD(self.nn_model.parameters(), lr=.01, weight_decay=0.001)
+            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=.0001)  # , weight_decay=0.001)
 
     def train_target_models(self, train_data: DataLoader) -> None:
         for epoch_index in range(self.config.number_of_epochs):
