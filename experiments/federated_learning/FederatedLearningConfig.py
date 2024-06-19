@@ -13,6 +13,6 @@ class FederatedLearningConfig:
 
     client_training_epochs: int = 1
     client_resources: dict = field(default_factory=lambda: {
-        "num_cpus": 2,
+        "num_cpus": 20,
         "num_gpus": 1,
     })

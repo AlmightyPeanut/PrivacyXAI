@@ -2,7 +2,7 @@ from experiments.Experiment import Experiment
 
 PARAMETERS_TO_EXPLORE = {
     'number_of_clients': [5],
-    'epsilons': [0.5, 3]
+    'epsilons': [.5, 1., 3.]
 }
 
 if __name__ == '__main__':
