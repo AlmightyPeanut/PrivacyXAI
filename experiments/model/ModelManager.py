@@ -247,7 +247,7 @@ class ModelManager:
         if not os.path.exists(model_folder_path):
             raise FileNotFoundError(f"'{model_folder_path}' does not exist")
 
-        model_parameters = f"fold={parameters['fold']}"
+        model_parameters = f"fold={parameters['fold']}_epochs={self.config.number_of_epochs}"
         if "privatised" in parameters and parameters["privatised"]:
             model_parameters += f"_privatised_eps={parameters['epsilon']}_delta={self.config.dp_target_delta}_max_grad_norm={self.config.dp_max_grad_norm}"
         if "fl" in parameters and parameters["fl"]:
