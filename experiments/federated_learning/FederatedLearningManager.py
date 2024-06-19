@@ -1,9 +1,11 @@
 import json
+from logging import INFO
 from typing import Callable
 
 import flwr as fl
 import numpy as np
 from flwr.client import Client
+from flwr.common import log
 from torch.utils.data import DataLoader
 
 from .FederatedLearningClient import scalar, FederatedLearningClient
@@ -12,6 +14,9 @@ from .FederatedLearningStrategy import FederatedLearningStrategy
 from experiments.model.ModelManager import ModelManager
 from experiments.dataset.DatasetManager import DATASET_MANAGER
 from ..utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
+
+
+fl.common.logger.configure(identifier='FederatedLearningManager', filename='federated_learning.log')
 
 
 class FederatedLearningManager:
@@ -57,17 +62,18 @@ class FederatedLearningManager:
             with open(RESULTS_PATH / file_name, 'w') as f:
                 json.dump(fold_result, f)
 
-            print(f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#'))
-            print(f"Client training results".center(PRINT_WIDTH, '_'))
+            results_message = f" FL training results for {dataset_name} ".center(PRINT_WIDTH, '#')
+            results_message += f"Client training results".center(PRINT_WIDTH, '_')
             for model_name, iteration_results in fold_result.items():
-                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
+                results_message += f" Model name: {model_name} ".center(PRINT_WIDTH, '-')
                 for iteration, metric_scores in iteration_results:
-                    print(f"Iteration {iteration}: ", end='')
+                    results_message += f"Iteration {iteration}: "
                     for metric_name, metric_score in metric_scores.items():
-                        print(f"{metric_name}: {metric_score}, ", end='')
-                    print()
-                print()
-            print()
+                        results_message += f"{metric_name}: {metric_score}, "
+                    results_message += '\n'
+                results_message += '\n'
+            results_message += '\n'
+            log(INFO, results_message)
 
             # save server model
             model_manager = ModelManager(number_of_features, number_of_classes)
