@@ -14,7 +14,7 @@ from ..model.NNClassifier import NNClassifier
 from ..utils import RESULTS_PATH, PRINT_WIDTH
 
 if torch.cuda.is_available():
-    TORCH_DEVICE = torch.device("cuda")
+    TORCH_DEVICE = torch.device("cuda:0")
 elif torch.backends.mps.is_available():
     TORCH_DEVICE = torch.device("mps")
 else:

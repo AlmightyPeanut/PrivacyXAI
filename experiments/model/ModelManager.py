@@ -33,7 +33,7 @@ class NoValidModelSpecified(Exception):
 class ModelManager:
     def __init__(self, number_of_features, number_of_classes, config: ModelConfig = ModelConfig()):
         if torch.cuda.is_available():
-            self.TORCH_DEVICE = torch.device("cuda")
+            self.TORCH_DEVICE = torch.device("cuda:0")
         elif torch.backends.mps.is_available():
             self.TORCH_DEVICE = torch.device("mps")
         else:
