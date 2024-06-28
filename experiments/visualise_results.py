@@ -8,6 +8,40 @@ from matplotlib import pyplot as plt
 
 from experiments.utils import RESULTS_PATH
 
+# RESULTS_PATH = RESULTS_PATH / 'training_results_0627'
+
+
+def extract_model_name_from_file_name(file_name: str) -> str:
+    model_name = re.sub(r'\.json', '', file_name)
+    model_name = re.sub(r'_fold=\d+', '', model_name)
+    model_name = re.sub(r'fl_model_metrics', 'fl', model_name)
+    model_name = re.sub(r'centralised_model_metrics', 'central', model_name)
+    model_name = re.sub(r'_fl=True', '', model_name)
+    model_name = re.sub(r'_fl=False', '', model_name)
+    model_name = re.sub(r'_rounds=\d+', '', model_name)
+    model_name = re.sub(r'_privatised=False', '', model_name)
+    model_name = re.sub(r'_privatised=True', '_dp', model_name)
+    model_name = re.sub(r'_delta=[\d.]+', '', model_name)
+    model_name = re.sub(r'_max_grad_norm=[\d.]+', '', model_name)
+    model_name = re.sub(r'epsilon', 'eps', model_name)
+    return model_name
+
+
+def map_model_name_to_display_name(model_name: str) -> str:
+    display_name = ''
+
+    if model_name.startswith('fl_'):
+        number_of_clients = int(re.findall(r'clients=\d+', model_name)[0].replace('clients=', ''))
+        display_name += f'FedAvg ({number_of_clients} clients)'
+    else:
+        display_name += 'Centralised'
+
+    if 'privatised' in model_name:
+        epsilon = float(re.findall(r'eps=[\d.]+', model_name)[0].replace('eps=', ''))
+        display_name += f'\n + DP (ε={epsilon})'
+
+    return display_name
+
 
 def visualise_training_results():
     results = dict()
@@ -21,18 +55,7 @@ def visualise_training_results():
         if not data:
             continue
 
-        model_name = re.sub(r'\.json', '', file)
-        model_name = re.sub(r'_fold=\d+', '', model_name)
-        model_name = re.sub(r'_model_metrics', '', model_name)
-        model_name = re.sub(r'_test_metrics', '', model_name)
-        model_name = re.sub(r'_fl=True', '', model_name)
-        model_name = re.sub(r'_fl=False', '', model_name)
-        model_name = re.sub(r'_clients=\d', '', model_name)
-        model_name = re.sub(r'_rounds=\d+', '', model_name)
-        model_name = re.sub(r'_privatised=False', '', model_name)
-        model_name = re.sub(r'_privatised=True', '_privatised', model_name)
-        model_name = re.sub(r'_delta=[\d.]+', '', model_name)
-        model_name = re.sub(r'_max_grad_norm=[\d.]+', '', model_name)
+        model_name = extract_model_name_from_file_name(file)
 
         if model_name not in results:
             results[model_name] = []
@@ -68,15 +91,8 @@ def visualise_training_results():
 
 def plot_training_results(data, model_type):
     all_data_frame = pd.concat(data, ignore_index=True).drop('fold', axis=1)
-    all_data_frame['model_name'] = all_data_frame['model_name'].replace({
-        'fl': "FedAvg",
-        'fl_privatised_epsilon=0.5': "FedAvg +\nDP(eps=0.5)",
-        'fl_privatised_epsilon=3': "FedAvg +\nDP(eps=3)",
-        'centralised': "Centralised",
-        'centralised_privatised_eps=0.5': "Centralised\n+ DP(eps=0.5)",
-        'centralised_privatised_eps=3': "Centralised\n+ DP(eps=3)",
-    })
-    for ax in all_data_frame.boxplot(by='model_name', rot=90, layout=(1, 3), figsize=(12, 4), vert=False):
+    all_data_frame['model_name'] = all_data_frame['model_name'].map(map_model_name_to_display_name)
+    for ax in all_data_frame.boxplot(by='model_name', rot=90, layout=(1, 4), figsize=(12, 4), vert=False):
         plt.setp(ax.get_yticklabels(), rotation=0, horizontalalignment='right')
         ax.set_xlim([0, .8])
         ax.set_xlabel('')
@@ -100,15 +116,7 @@ def visualise_xai_results():
         if not data:
             continue
 
-        model_name = re.sub(r'\.json', '', file)
-        model_name = re.sub(r'_model', '', model_name)
-        model_name = re.sub(r'_fold=\d+', '', model_name)
-        model_name = re.sub(r'_clients=\d', '', model_name)
-        model_name = re.sub(r'_rounds=\d+', '', model_name)
-        model_name = re.sub(r'_privatised=False', '', model_name)
-        model_name = re.sub(r'_privatised=True', '_privatised', model_name)
-        model_name = re.sub(r'_delta=[\d.]+', '', model_name)
-        model_name = re.sub(r'_max_grad_norm=[\d.]+', '', model_name)
+        model_name = extract_model_name_from_file_name(file)
 
         new_data = []
         for xai_method_name, result in data.items():
@@ -128,27 +136,7 @@ def visualise_xai_results():
 
 def plot_xai_results(data, model_type):
     data = pd.DataFrame(data)
-
-    if model_type == 'LR':
-        name_replacements = {
-            'lr': 'Centralised',
-            'lr_privatised_eps=0.5': 'Centralised\n+ DP(eps=0.5)',
-            'lr_privatised_eps=3': 'Centralised\n+ DP(eps=3)',
-            'lr_fl': 'FedAvg',
-            'lr_privatised_eps=0.5_fl': 'FedAvg +\nDP(eps=0.5)',
-            'lr_privatised_eps=3_fl': 'FedAvg+\nDP(eps=3)',
-        }
-    else:
-        name_replacements = {
-            'nn': 'Centralised',
-            'nn_privatised_eps=0.5': 'Centralised\n+ DP(eps=0.5)',
-            'nn_privatised_eps=3': 'Centralised\n+ DP(eps=3)',
-            'nn_fl': 'FedAvg',
-            'nn_privatised_eps=0.5_fl': 'FedAvg +\nDP(eps=0.5)',
-            'nn_privatised_eps=3_fl': 'FedAvg +\nDP(eps=3)',
-        }
-
-    data['model_name'] = data['model_name'].replace(name_replacements)
+    data['model_name'] = data['model_name'].map(map_model_name_to_display_name)
 
     data_1 = data[data.columns[:-2]].stack().reset_index()
     data_1.columns = ['index', 'XAI Metric', 'Value']
