@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -11,7 +12,8 @@ class LRClassifier(nn.Module):
         self.number_of_classes = number_of_classes
 
         self.output_layer = nn.Linear(number_of_features, number_of_classes)
-        nn.init.uniform_(self.output_layer.weight, -0.1, 0.1)
+        initial_weight_range = 1. / np.sqrt(number_of_features)
+        nn.init.uniform_(self.output_layer.weight, -initial_weight_range, initial_weight_range)
         nn.init.zeros_(self.output_layer.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
