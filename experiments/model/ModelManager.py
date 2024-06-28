@@ -189,7 +189,7 @@ class ModelManager:
     def _pop_model_parameters_from_array(input_array: list[np.array]) -> list[np.array]:
         model_parameters = []
 
-        while np.all(input_array[0] != PARAMETER_ARRAY_END_SYMBOL):
+        while len(input_array[0].shape) != 0:
             model_parameters.append(input_array.pop(0))
         input_array.pop(0)
 
@@ -197,18 +197,22 @@ class ModelManager:
 
     def set_parameters_of_models(self, parameters_of_models: list[np.array]) -> None:
         while parameters_of_models:
-            model_symbol = parameters_of_models.pop(0).item()
+            model_symbol = int(parameters_of_models.pop(0).item())
             model_parameters = self._pop_model_parameters_from_array(parameters_of_models)
 
             if model_symbol == PARAMETER_ARRAY_LR_SYMBOL:
                 parameters_dict = zip(self.lr_model.state_dict().keys(), model_parameters)
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.lr_model.load_state_dict(new_state_dict)
+                continue
 
             if model_symbol == PARAMETER_ARRAY_NN_SYMBOL:
                 parameters_dict = zip(self.nn_model.state_dict().keys(), model_parameters)
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.nn_model.load_state_dict(new_state_dict)
+                continue
+
+            raise ValueError(f"Unknown model symbol {model_symbol}")
 
     def privatise_models_and_data(self, data_loader: DataLoader, epsilon: float):
         print(f"Privatising with eps={epsilon}")
