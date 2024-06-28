@@ -60,7 +60,7 @@ class ModelManager:
             self.nn_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
-            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=.0001)  # , weight_decay=0.001)
+            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001)  # , weight_decay=0.001)
             self.nn_privacy_engine = PrivacyEngine(accountant='rdp')
 
     def train_target_models(self, train_data: DataLoader) -> None:
