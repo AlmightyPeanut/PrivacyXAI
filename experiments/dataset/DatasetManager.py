@@ -53,7 +53,7 @@ class DatasetManager(metaclass=Singleton):
                 )
                 self.datasets[dataset_name][fold_index]["test"] = DataLoader(
                     torch.utils.data.Subset(dataset, test_ids),
-                    batch_size=self.config.batch_size if self.config.batch_size > 0 else len(test_ids),
+                    batch_size=len(test_ids),
                     shuffle=True,
                     collate_fn=lambda x: x
                 )
