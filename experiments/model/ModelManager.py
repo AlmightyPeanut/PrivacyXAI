@@ -46,14 +46,13 @@ class ModelManager:
         if not self.config.target_models:
             raise NoValidModelSpecified
 
-        self.privacy_engine = PrivacyEngine(accountant='rdp')
-
         if 'LR' in self.config.target_models:
             self.lr_model = LRClassifier(self.number_of_features, self.number_of_classes).to(self.TORCH_DEVICE)
             self.lr_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.lr_loss_function = nn.CrossEntropyLoss()
             self.lr_optimizer = SGD(self.lr_model.parameters(), lr=0.001)  # , weight_decay=0.001)
+            self.lr_privacy_engine = PrivacyEngine(accountant='rdp')
 
         if 'NN' in self.config.target_models:
             self.nn_model = NNClassifier(number_of_features=self.number_of_features,
@@ -62,6 +61,7 @@ class ModelManager:
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
             self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=.0001)  # , weight_decay=0.001)
+            self.nn_privacy_engine = PrivacyEngine(accountant='rdp')
 
     def train_target_models(self, train_data: DataLoader) -> None:
         for epoch_index in range(self.config.number_of_epochs):
@@ -215,7 +215,7 @@ class ModelManager:
 
         # new_data_loader = None
         if 'LR' in self.config.target_models:
-            self.lr_model, self.lr_optimizer, _ = self.privacy_engine.make_private_with_epsilon(
+            self.lr_model, self.lr_optimizer, _ = self.lr_privacy_engine.make_private_with_epsilon(
                 module=self.lr_model,
                 optimizer=self.lr_optimizer,
                 data_loader=data_loader,
@@ -227,7 +227,7 @@ class ModelManager:
             )
 
         if 'NN' in self.config.target_models:
-            self.nn_model, self.nn_optimizer, _ = self.privacy_engine.make_private_with_epsilon(
+            self.nn_model, self.nn_optimizer, _ = self.nn_privacy_engine.make_private_with_epsilon(
                 module=self.nn_model,
                 optimizer=self.nn_optimizer,
                 data_loader=data_loader,
