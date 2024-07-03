@@ -3,7 +3,7 @@ import os
 import pickle
 import types
 from functools import partial
-from multiprocessing import Pool
+from torch.multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
