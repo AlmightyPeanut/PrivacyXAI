@@ -42,19 +42,19 @@ class XAIConfig:
     processes: int = multiprocessing.cpu_count() // 2
     number_of_xai_test_samples: int = 5
     methods: dict = field(default_factory=lambda: {
-        "Lime+Lasso": {
+        "Lime": {
             "method": "Lime",
             "xai_lib": 'captum',
             "device": TORCH_DEVICE,
         },
-        "Lime+LR": {
-            "method": "Lime",
-            "xai_lib_kwargs": {
-                "interpretable_model": SkLearnLinearRegression()
-            },
-            "xai_lib": 'captum',
-            "device": TORCH_DEVICE,
-        },
+        # "Lime+LR": {
+        #     "method": "Lime",
+        #     "xai_lib_kwargs": {
+        #         "interpretable_model": SkLearnLinearRegression()
+        #     },
+        #     "xai_lib": 'captum',
+        #     "device": TORCH_DEVICE,
+        # },
         'IntegratedGradients': {
             "method": "IntegratedGradients",
             "xai_lib": 'captum',
