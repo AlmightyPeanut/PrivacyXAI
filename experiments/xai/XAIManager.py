@@ -5,7 +5,11 @@ import torch
 import types
 from functools import partial
 from torch.multiprocessing import Pool
-torch.multiprocessing.set_start_method('spawn')
+
+try:
+    torch.multiprocessing.set_start_method('spawn')
+except RuntimeError:
+    pass
 
 import numpy as np
 import pandas as pd
