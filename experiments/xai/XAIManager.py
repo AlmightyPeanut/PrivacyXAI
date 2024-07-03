@@ -66,6 +66,10 @@ def evaluate_model_explanations(data: np.array, model: torch.nn.Module, xai_metr
 
 def xai_task(data: np.array, model_file: os.PathLike,
              number_of_features: int, number_of_classes: int):
+    if torch.cuda.is_available():
+        gpu_id = np.random.randint(0, torch.cuda.device_count())
+        torch.cuda.set_device(gpu_id)
+
     if not os.path.exists(model_file):
         raise ValueError(f"Model path {model_file} does not exist!")
 
