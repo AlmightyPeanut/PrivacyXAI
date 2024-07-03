@@ -60,7 +60,11 @@ class XAIConfig:
             "xai_lib": 'captum',
             "device": TORCH_DEVICE,
         },
-        'FeaturePermutation': ("FeaturePermutation", {})
+        'FeaturePermutation': {
+            "method": "FeaturePermutation",
+            "xai_lib": 'captum',
+            "device": TORCH_DEVICE,
+        }
     })
 
     xai_metrics: dict = field(default_factory=lambda: {
@@ -111,7 +115,7 @@ class XAIConfig:
         "Completeness": Completeness(
             perturb_baseline='mean',
         ),
-        # "Non-Sensitivity": NonSensitivity(
-        #     perturb_baseline='mean',
-        # ),
+        "Non-Sensitivity": NonSensitivity(
+            perturb_baseline='mean',
+        ),
     })
