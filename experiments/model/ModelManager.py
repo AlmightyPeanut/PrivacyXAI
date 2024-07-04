@@ -22,8 +22,8 @@ torch.manual_seed(42)
 # These start and end symbols for the parameters of each model have to be numbers
 # to work with flower's federated learning
 PARAMETER_ARRAY_END_SYMBOL = 2 ** 32 - 1
-PARAMETER_ARRAY_LR_SYMBOL = 2 ** 32 - 2
-PARAMETER_ARRAY_NN_SYMBOL = 2 ** 32 - 4
+PARAMETER_ARRAY_LR_SYMBOL = 2 ** 32 - 5
+PARAMETER_ARRAY_NN_SYMBOL = 2 ** 32 - 10
 
 
 class NoValidModelSpecified(Exception):
@@ -200,13 +200,13 @@ class ModelManager:
             model_symbol = int(parameters_of_models.pop(0).item())
             model_parameters = self._pop_model_parameters_from_array(parameters_of_models)
 
-            if model_symbol == PARAMETER_ARRAY_LR_SYMBOL:
+            if abs(model_symbol - PARAMETER_ARRAY_LR_SYMBOL) < 2:
                 parameters_dict = zip(self.lr_model.state_dict().keys(), model_parameters)
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.lr_model.load_state_dict(new_state_dict)
                 continue
 
-            if model_symbol == PARAMETER_ARRAY_NN_SYMBOL:
+            if abs(model_symbol - PARAMETER_ARRAY_NN_SYMBOL) < 2:
                 parameters_dict = zip(self.nn_model.state_dict().keys(), model_parameters)
                 new_state_dict = OrderedDict({key: torch.tensor(value) for key, value in parameters_dict})
                 self.nn_model.load_state_dict(new_state_dict)
