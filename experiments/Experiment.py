@@ -1,8 +1,6 @@
-import json
-import multiprocessing
 import os
 
-from torch.multiprocessing.pool import Pool
+import torch
 from torch.utils.data import DataLoader
 
 from experiments.dataset.DatasetManager import DATASET_MANAGER
@@ -11,6 +9,12 @@ from experiments.federated_learning.FederatedLearningManager import FederatedLea
 from experiments.utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
 from experiments.xai.XAIManager import XAIManager
 from experiments.mia.MIAManager import run_membership_inference_attack
+
+
+def _run_fl_simulation(privatise_models: bool, number_of_clients: int, dataset_name: str, epsilon: float = .0) -> None:
+    fl_manager = FederatedLearningManager(privatise_models=privatise_models, number_of_clients=number_of_clients,
+                                          epsilon=epsilon)
+    fl_manager.start_simulation(dataset_name)
 
 
 class Experiment:
@@ -57,13 +61,11 @@ class Experiment:
 
     def _run_federated_learning(self, dataset_name: str):
         for number_of_clients in self.number_of_clients:
-            fl_manager = FederatedLearningManager(privatise_models=False, number_of_clients=number_of_clients)
-            fl_manager.start_simulation(dataset_name)
+            torch.multiprocessing.spawn(_run_fl_simulation, (False, number_of_clients, dataset_name,), join=False)
 
             for epsilon in self.epsilons:
-                fl_manager = FederatedLearningManager(privatise_models=True, number_of_clients=number_of_clients,
-                                                      epsilon=epsilon)
-                fl_manager.start_simulation(dataset_name)
+                torch.multiprocessing.spawn(_run_fl_simulation, (True, number_of_clients, dataset_name, epsilon,),
+                                            join=False)
 
     @staticmethod
     def _get_model_paths(use_centralised_model: bool, use_federated_model: bool) -> list[os.PathLike]:
