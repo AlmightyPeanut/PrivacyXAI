@@ -3,11 +3,6 @@ import torch
 
 from dataclasses import dataclass, field
 from captum._utils.models import SkLearnLasso, SkLearnLinearRegression
-from captum.attr import (
-    Lime,
-    IntegratedGradients,
-    FeaturePermutation,
-)
 
 from quantus import (
     FaithfulnessEstimate,

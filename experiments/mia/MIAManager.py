@@ -1,93 +1,162 @@
+import json
 import os
+import re
 
 import numpy as np
-import tqdm
-from art.attacks.inference.membership_inference import MembershipInferenceBlackBox
+import torch
+from art.attacks.inference.membership_inference import MembershipInferenceBlackBox, ShadowModels
+from art.estimators.classification import PyTorchClassifier
+from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score
+from torch import multiprocessing
+from torch.multiprocessing.pool import Pool
 from torch.utils.data import DataLoader
 
-from experiments.model.ModelManager import ModelManager
+from experiments.mia.MIAConfig import MIAConfig
+from experiments.model.LRClassifier import LRClassifier
 from experiments.dataset.DatasetManager import DATASET_MANAGER
-from experiments.utils.Singleton import Singleton
+from experiments.model.NNClassifier import NNClassifier
+from experiments.utils import remove_model_prefix, RESULTS_PATH, wrap_task
 
 
-class MIAManager(metaclass=Singleton):
-    def __init__(self):
-        self.attack_models = {}
+def _run_attack(target_model_path: os.PathLike, fold_index: int,
+                number_of_features: int, number_of_classes: int,
+                target_model_train_data: DataLoader, target_model_test_data: DataLoader,
+                shadow_model_data: DataLoader) -> None:
+    if torch.cuda.is_available():
+        gpu_id = np.random.randint(0, torch.cuda.device_count())
+        torch.cuda.set_device(gpu_id)
 
-    def prepare_predictions_for_attack(self, data: DataLoader, model_manager: ModelManager) -> (
-            dict[str, np.ndarray], np.ndarray, np.ndarray
-    ):
-        data_model_predictions = {}
-        data_true_classes = []
-        data_train_test_indicator = []
+    config = MIAConfig()
 
-        for batch_data in tqdm.tqdm(data, unit='batch'):
-            predictions = model_manager.predict_one_batch_logits(batch_data['features'])
-            for model_name, prediction in predictions.items():
-                if model_name not in data_model_predictions:
-                    data_model_predictions[model_name] = []
-                data_model_predictions[model_name].extend(prediction)
+    if 'lr_model' in str(target_model_path):
+        target_model = LRClassifier(number_of_features, number_of_classes)
+        shadow_model = LRClassifier(number_of_features, number_of_classes)
+        shadow_model_optimizer = torch.optim.SGD(shadow_model.parameters(), lr=0.1)
+    elif 'nn_model' in str(target_model_path):
+        target_model = NNClassifier(number_of_features, number_of_classes)
+        shadow_model = NNClassifier(number_of_features, number_of_classes)
+        shadow_model_optimizer = torch.optim.AdamW(shadow_model.parameters(), lr=0.1)
+    else:
+        raise ValueError(f"Model path {target_model_path} is not a valid model path!")
 
-            data_true_classes.extend(batch_data['classes'])
-            data_train_test_indicator.extend(batch_data['train_test_indicator'])
+    target_model.load_state_dict(remove_model_prefix(torch.load(target_model_path), '_module.'))
+    target_model = PyTorchClassifier(target_model, torch.nn.BCELoss(),
+                                     input_shape=(number_of_features,), nb_classes=2)
+    shadow_model = PyTorchClassifier(shadow_model, torch.nn.BCELoss(), optimizer=shadow_model_optimizer,
+                                     input_shape=(number_of_features,), nb_classes=2)
 
-        for model_name, predictions in data_model_predictions.items():
-            data_model_predictions[model_name] = np.array(predictions)
-        data_true_classes = np.array(data_true_classes)
-        data_train_test_indicator = np.array(data_train_test_indicator)
+    shadow_model_data = next(iter(shadow_model_data))
+    shadow_models = ShadowModels(shadow_model, num_shadow_models=config.number_of_shadow_models)
+    shadow_dataset = shadow_models.generate_shadow_dataset(shadow_model_data['features'],
+                                                           shadow_model_data['classes'])
+    (member_x, member_y, member_predictions), (non_member_x, non_member_y, non_member_predictions) = shadow_dataset
 
-        return data_model_predictions, data_true_classes, data_train_test_indicator
+    target_model_test_data_batch = next(iter(target_model_test_data))
+    shadow_models_evaluation_results = []
+    for shadow_model in shadow_models.get_shadow_models():
+        prediction_logits = shadow_model.predict(target_model_test_data_batch['features'])
+        prediction_classes = np.round(prediction_logits, decimals=0)
 
-    def run_membership_inference_attack(
-            self, dataset_name: str, model_folder: os.PathLike, use_federated_learning_data: bool
-    ) -> dict[str, dict[str, float]]:
-        model_manager = ModelManager()
-        model_manager.load_models(model_folder)
+        shadow_models_evaluation_results.append({
+            "AUROC": roc_auc_score(target_model_test_data_batch['classes'], prediction_logits,
+                                   multi_class='ovr', average='macro'),
+            "Acc": accuracy_score(target_model_test_data_batch['classes'], prediction_classes),
+            "Macro F1 Score": f1_score(target_model_test_data_batch['classes'], prediction_classes, average='macro'),
+            "Binary F1 Score": f1_score(target_model_test_data_batch['classes'], prediction_classes, average='binary'),
+        })
 
-        print("Preparing train data...")
-        target_model_train_predictions, target_model_train_true_classes, _ = (
-            self.prepare_predictions_for_attack(
-                DATASET_MANAGER.get_attacker_train_data(dataset_name, use_federated_learning_data), model_manager)
-        )
+    # This mia library works only with at least 2 classes
+    member_predictions = np.concatenate([1 - member_predictions, member_predictions], axis=1)
+    non_member_predictions = np.concatenate([1 - non_member_predictions, non_member_predictions], axis=1)
+    attack = MembershipInferenceBlackBox(target_model)
+    attack.fit(member_x, member_y, non_member_x, non_member_y, member_predictions, non_member_predictions)
 
-        print("Preparing test data...")
-        target_model_test_predictions, target_model_test_true_classes, _ = (
-            self.prepare_predictions_for_attack(
-                DATASET_MANAGER.get_attacker_test_data(dataset_name, use_federated_learning_data), model_manager)
-        )
+    all_membership_inference = []
+    for target_model_train_data_batch in target_model_train_data:
+        target_prediction = target_model.predict(target_model_train_data_batch['features'])
+        target_prediction = np.concatenate([1 - target_prediction, target_prediction], axis=1)
+        membership_inference = attack.infer(target_model_train_data_batch['features'],
+                                            target_model_train_data_batch['classes'],
+                                            pred=target_prediction)
+        all_membership_inference.append(membership_inference)
+    all_membership_inference = np.concatenate(all_membership_inference)
 
-        print("Preparing records to attack...")
-        records_to_attack_predictions, records_to_attack_true_classes, records_to_attack_train_test_indicator = (
-            self.prepare_predictions_for_attack(
-                DATASET_MANAGER.get_records_to_attack(dataset_name, use_federated_learning_data), model_manager)
-        )
+    target_prediction = target_model.predict(target_model_test_data_batch['features'])
+    target_prediction = np.concatenate([1 - target_prediction, target_prediction], axis=1)
+    non_membership_inference = attack.infer(target_model_test_data_batch['features'],
+                                            target_model_test_data_batch['classes'],
+                                            pred=target_prediction)
 
-        target_models = model_manager.prepare_models_for_mia()
+    predicted_membership = np.concatenate([all_membership_inference, non_membership_inference])
+    true_membership = np.concatenate([np.ones(len(all_membership_inference)),
+                                      np.zeros(len(non_membership_inference))])
 
-        mia_scores = {}
-        for target_model_name, target_model in target_models.items():
-            print(f"Attacking model {target_model_name}")
-            attack = MembershipInferenceBlackBox(estimator=target_model,
-                                                 nn_model_epochs=5,
-                                                 nn_model_batch_size=4096)
+    results = {
+        "fold_index": fold_index,
+        "attack_accuracy": accuracy_score(true_membership, predicted_membership),
+        "attack_precision": precision_score(true_membership, predicted_membership),
+        "attack_recall": precision_score(true_membership, predicted_membership),
+        "shadow_model_scores": shadow_models_evaluation_results,
+    }
 
-            attack.fit(
-                x=None, pred=target_model_train_predictions[target_model_name],
-                y=target_model_train_true_classes,
-                test_x=None, test_pred=target_model_test_predictions[target_model_name],
-                test_y=target_model_test_true_classes,
-            )
-
-            membership_status = attack.infer(
-                x=None, pred=records_to_attack_predictions[target_model_name],
-                y=records_to_attack_true_classes
-            )
-
-            mia_scores[target_model_name] = {
-                "Accuracy": np.mean(membership_status == records_to_attack_train_test_indicator)
-            }
-
-        return mia_scores
+    with open(RESULTS_PATH / "mia" / (target_model_path.name[:-3] + 'json'), "w") as f:
+        json.dump(results, f)
 
 
-MIA_MANAGER = MIAManager()
+def run_membership_inference_attack(
+        dataset_name: str, number_of_features: int, number_of_classes: int, model_paths: list[os.PathLike]
+) -> None:
+    federated_model_paths = []
+    centralised_model_paths = []
+    for model_path in model_paths:
+        if "_fl" in model_path.name:
+            federated_model_paths.append(model_path)
+        else:
+            centralised_model_paths.append(model_path)
+
+    try:
+        multiprocessing.set_start_method("spawn")
+    except RuntimeError:
+        pass
+
+    # Centralised model attack
+    print("Attacking centralised models...")
+    for fold_index, (target_train_data, target_test_data,
+                     shadow_train_data) in DATASET_MANAGER.get_mia_data_folds(dataset_name):
+        fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
+
+        def _run_attack_wrapper(model_path: os.PathLike):
+            _run_attack(model_path, fold_index,
+                        number_of_features, number_of_classes,
+                        target_train_data, target_test_data,
+                        shadow_train_data)
+
+        with Pool(processes=multiprocessing.cpu_count() // 2) as pool:
+            wrap_task(pool, _run_attack_wrapper, fold_models)
+
+    # Federated learning with malicious client attack
+    print("Attacking federated models...")
+    federated_learning_models = {}
+    for model_path in federated_model_paths:
+        number_of_clients = int(re.findall(r"clients=\d+", model_path.name)[0].replace("clients=", ""))
+        if number_of_clients not in federated_learning_models:
+            federated_learning_models[number_of_clients] = []
+        federated_learning_models[number_of_clients].append(model_path)
+
+    for number_of_clients, model_paths in federated_learning_models.items():
+        for fold_index, (
+                target_train_data, target_test_data, shadow_train_data) in DATASET_MANAGER.get_mia_data_folds(
+            dataset_name,
+            use_federated_data_only=True,
+            number_of_clients=number_of_clients,
+        ):
+            fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
+
+            def _run_attack_wrapper(model_path: os.PathLike):
+                _run_attack(model_path, fold_index,
+                            number_of_features, number_of_classes,
+                            target_train_data, target_test_data,
+                            shadow_train_data)
+
+            with Pool(processes=multiprocessing.cpu_count() // 2) as pool:
+                wrap_task(pool, _run_attack_wrapper, fold_models)

@@ -8,6 +8,7 @@ from experiments.federated_learning.FederatedLearningManager import FederatedLea
 from experiments.utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
 from experiments.xai.XAIManager import XAIManager
 from experiments.mia.MIAManager import MIA_MANAGER
+from experiments.mia.MIAManager import run_membership_inference_attack
 
 
 class Experiment:
@@ -62,24 +63,29 @@ class Experiment:
                                                       epsilon=epsilon)
                 fl_manager.start_simulation(dataset_name)
 
+    @staticmethod
+    def _get_model_paths(use_centralised_model: bool, use_federated_model: bool) -> list[os.PathLike]:
+        model_paths = []
+        if use_federated_model:
+            model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
+            for model_file in model_path.iterdir():
+                if not str(model_file).endswith('.pth'):
+                    continue
+                model_paths.append(model_path / model_file)
+
+        if use_centralised_model:
+            model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
+            for model_file in model_path.iterdir():
+                if not str(model_file).endswith('.pth'):
+                    continue
+                model_paths.append(model_path / model_file)
+        return model_paths
+
     def run_xai_evaluation(self, use_federated_model=True, use_centralised_model=True):
         for dataset_name in DATASET_MANAGER.datasets:
             print(f" XAI evaluation on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
-            model_paths = []
-            if use_federated_model:
-                model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
-                for model_file in model_path.iterdir():
-                    if not str(model_file).endswith('.pth'):
-                        continue
-                    model_paths.append(model_path / model_file)
-
-            if use_centralised_model:
-                model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
-                for model_file in model_path.iterdir():
-                    if not str(model_file).endswith('.pth'):
-                        continue
-                    model_paths.append(model_path / model_file)
+            model_paths = self._get_model_paths(use_centralised_model, use_federated_model)
 
             for fold_index, (_, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
                 fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
@@ -88,25 +94,12 @@ class Experiment:
                                                    DATASET_MANAGER.get_number_of_classes(dataset_name),
                                                    fold_models)
 
-    @staticmethod
-    def run_mia(use_federated_model=True):
+    def run_mia(self, use_federated_model=True, use_centralised_model=True):
         for dataset_name in DATASET_MANAGER.datasets:
             print(f" MIA on {dataset_name} ".center(PRINT_WIDTH, '#'))
 
-            if use_federated_model:
-                model_path = MODEL_CHECKPOINTS_PATH / 'fl_server_model'
-            else:
-                model_path = MODEL_CHECKPOINTS_PATH / 'non_fl_model'
-
-            mia_scores = MIA_MANAGER.run_membership_inference_attack(dataset_name, model_path, use_federated_model)
-            json_file_name = 'fl_model_mia_metrics.json'
-            if not use_federated_model:
-                json_file_name = 'non_' + json_file_name
-            with open(RESULTS_PATH / json_file_name, 'w') as f:
-                json.dump(mia_scores, f)
-
-            for model_name, mia_metric_scores in mia_scores.items():
-                print(f" Model name: {model_name} ".center(PRINT_WIDTH, '-'))
-                for mia_metric_name, mia_metric_score in mia_metric_scores.items():
-                    print(f"{mia_metric_name}: {mia_metric_score}, ", end='')
-                print()
+            model_paths = self._get_model_paths(use_centralised_model, use_federated_model)
+            run_membership_inference_attack(dataset_name,
+                                            DATASET_MANAGER.get_number_of_features(dataset_name),
+                                            DATASET_MANAGER.get_number_of_classes(dataset_name),
+                                            model_paths)

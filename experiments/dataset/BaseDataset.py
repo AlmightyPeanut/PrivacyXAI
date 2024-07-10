@@ -25,13 +25,13 @@ class BaseDataset(Dataset):
 
     def __getitems__(self, index: list[int]) -> np.array:
         sample_selection = pl.col(list(map(str, index)))
-        features = self.features.select(sample_selection).transpose().to_numpy().astype(np.float64)
-        classes = self.classes.select(sample_selection).transpose().to_numpy().astype(np.int64)  # .squeeze(1)
+        features = self.features.select(sample_selection).transpose().to_numpy().astype(np.float32)
+        classes = self.classes.select(sample_selection).transpose().to_numpy().astype(np.int32)  # .squeeze(1)
 
         train_test_indicator = None
         if self.train_test_indicator is not None:
             train_test_indicator = self.train_test_indicator.select(sample_selection).transpose().to_numpy().astype(
-                np.int64).squeeze(1)
+                np.int32).squeeze(1)
 
         samples = {
             'features': features,
