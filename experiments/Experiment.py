@@ -61,11 +61,15 @@ class Experiment:
 
     def _run_federated_learning(self, dataset_name: str):
         for number_of_clients in self.number_of_clients:
-            torch.multiprocessing.spawn(_run_fl_simulation, (False, number_of_clients, dataset_name,), join=False)
+            process_context = torch.multiprocessing.spawn(_run_fl_simulation,
+                                                          (False, number_of_clients, dataset_name,),
+                                                          join=False)
 
             for epsilon in self.epsilons:
-                torch.multiprocessing.spawn(_run_fl_simulation, (True, number_of_clients, dataset_name, epsilon,),
-                                            join=False)
+                process_context = torch.multiprocessing.spawn(_run_fl_simulation,
+                                                              (True, number_of_clients, dataset_name, epsilon,),
+                                                              join=False)
+            process_context.join()
 
     @staticmethod
     def _get_model_paths(use_centralised_model: bool, use_federated_model: bool) -> list[os.PathLike]:
