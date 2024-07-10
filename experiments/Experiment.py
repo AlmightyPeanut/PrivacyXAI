@@ -1,5 +1,8 @@
 import json
+import multiprocessing
+import os
 
+from torch.multiprocessing.pool import Pool
 from torch.utils.data import DataLoader
 
 from experiments.dataset.DatasetManager import DATASET_MANAGER
@@ -7,7 +10,6 @@ from experiments.model.ModelManager import ModelManager
 from experiments.federated_learning.FederatedLearningManager import FederatedLearningManager
 from experiments.utils import MODEL_CHECKPOINTS_PATH, RESULTS_PATH, PRINT_WIDTH
 from experiments.xai.XAIManager import XAIManager
-from experiments.mia.MIAManager import MIA_MANAGER
 from experiments.mia.MIAManager import run_membership_inference_attack
 
 
