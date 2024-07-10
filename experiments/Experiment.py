@@ -11,7 +11,8 @@ from experiments.xai.XAIManager import XAIManager
 from experiments.mia.MIAManager import run_membership_inference_attack
 
 
-def _run_fl_simulation(privatise_models: bool, number_of_clients: int, dataset_name: str, epsilon: float = .0) -> None:
+def _run_fl_simulation(process_index: int, privatise_models: bool, number_of_clients: int, dataset_name: str,
+                       epsilon: float = .0) -> None:
     fl_manager = FederatedLearningManager(privatise_models=privatise_models, number_of_clients=number_of_clients,
                                           epsilon=epsilon)
     fl_manager.start_simulation(dataset_name)
