@@ -39,6 +39,9 @@ class XAIConfig:
     methods: dict = field(default_factory=lambda: {
         "Lime": {
             "method": "Lime",
+            "xai_lib_kwargs": {
+                "interpretable_model": SkLearnLasso(alpha=.0),
+            },
             "xai_lib": 'captum',
             "device": TORCH_DEVICE,
         },
