@@ -1,9 +1,14 @@
 import json
+import marshal
 import os
+import pickle
 import re
+import types
+from functools import partial
 
 import numpy as np
 import torch
+import tqdm
 from art.attacks.inference.membership_inference import MembershipInferenceBlackBox, ShadowModels
 from art.estimators.classification import PyTorchClassifier
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score
@@ -15,7 +20,46 @@ from experiments.mia.MIAConfig import MIAConfig
 from experiments.model.LRClassifier import LRClassifier
 from experiments.dataset.DatasetManager import DATASET_MANAGER
 from experiments.model.NNClassifier import NNClassifier
-from experiments.utils import remove_model_prefix, RESULTS_PATH, wrap_task
+from experiments.utils import remove_model_prefix, RESULTS_PATH
+
+
+def run_task(*args, **kwargs):
+    marshaled = kwargs.pop('marshaled_func')
+    func = marshal.loads(marshaled)
+    pickled_closure = kwargs.pop('pickled_closure')
+    pickled_closure = pickle.loads(pickled_closure)
+
+    restored_function = types.FunctionType(func, globals(), closure=create_closure(func, pickled_closure))
+    return restored_function(*args, **kwargs)
+
+
+def create_closure(func, original_closure):
+    indent = " " * 4
+    closure_vars_def = f"\n{indent}".join(f"{name}=None" for name in func.co_freevars)
+    closure_vars_ref = ",".join(func.co_freevars)
+    dynamic_closure = "create_dynamic_closure"
+    s = (f"""
+def {dynamic_closure}():
+    {closure_vars_def}
+    def internal():
+        {closure_vars_ref}
+    return internal.__closure__
+    """)
+    exec(s)
+    created_closure = locals()[dynamic_closure]()
+    for closure_var, value in zip(created_closure, original_closure):
+        closure_var.cell_contents = value
+    return created_closure
+
+
+def wrap_task(pool: Pool, task, generator):
+    closure = task.__closure__
+    pickled_closure = pickle.dumps(tuple(x.cell_contents for x in closure))
+    marshaled_func = marshal.dumps(task.__code__)
+    with tqdm.tqdm(total=len(generator)) as pbar:
+        for _ in pool.imap_unordered(partial(run_task, marshaled_func=marshaled_func, pickled_closure=pickled_closure),
+                                     generator):
+            pbar.update()
 
 
 def _run_attack(target_model_path: os.PathLike, fold_index: int,
