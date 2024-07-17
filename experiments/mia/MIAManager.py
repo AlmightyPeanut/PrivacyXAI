@@ -13,7 +13,7 @@ from art.attacks.inference.membership_inference import MembershipInferenceBlackB
 from art.estimators.classification import PyTorchClassifier
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score
 from torch import multiprocessing
-from torch.multiprocessing.pool import Pool
+from torch.multiprocessing import Pool
 from torch.utils.data import DataLoader
 
 from experiments.mia.MIAConfig import MIAConfig
@@ -64,8 +64,8 @@ def wrap_task(pool: Pool, task, generator):
 
 def _run_attack(target_model_path: os.PathLike, fold_index: int,
                 number_of_features: int, number_of_classes: int,
-                target_model_train_data: DataLoader, target_model_test_data: DataLoader,
-                shadow_model_data: DataLoader) -> None:
+                target_model_train_data: DataLoader, target_model_test_data: dict,
+                shadow_model_data: dict) -> None:
     if torch.cuda.is_available():
         gpu_id = np.random.randint(0, torch.cuda.device_count())
         torch.cuda.set_device(gpu_id)
@@ -89,13 +89,12 @@ def _run_attack(target_model_path: os.PathLike, fold_index: int,
     shadow_model = PyTorchClassifier(shadow_model, torch.nn.BCELoss(), optimizer=shadow_model_optimizer,
                                      input_shape=(number_of_features,), nb_classes=2)
 
-    shadow_model_data = next(iter(shadow_model_data))
     shadow_models = ShadowModels(shadow_model, num_shadow_models=config.number_of_shadow_models)
     shadow_dataset = shadow_models.generate_shadow_dataset(shadow_model_data['features'],
                                                            shadow_model_data['classes'])
     (member_x, member_y, member_predictions), (non_member_x, non_member_y, non_member_predictions) = shadow_dataset
 
-    target_model_test_data_batch = next(iter(target_model_test_data))
+    target_model_test_data_batch = target_model_test_data
     shadow_models_evaluation_results = []
     for shadow_model in shadow_models.get_shadow_models():
         prediction_logits = shadow_model.predict(target_model_test_data_batch['features'])
@@ -169,6 +168,9 @@ def run_membership_inference_attack(
                      shadow_train_data) in DATASET_MANAGER.get_mia_data_folds(dataset_name):
         fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
 
+        target_test_data = next(iter(target_test_data))
+        shadow_train_data = next(iter(shadow_train_data))
+
         def _run_attack_wrapper(model_path: os.PathLike):
             _run_attack(model_path, fold_index,
                         number_of_features, number_of_classes,
@@ -195,6 +197,9 @@ def run_membership_inference_attack(
             number_of_clients=number_of_clients,
         ):
             fold_models = [p for p in model_paths if f"fold={fold_index}" in str(p)]
+
+            target_test_data = next(iter(target_test_data))
+            shadow_train_data = next(iter(shadow_train_data))
 
             def _run_attack_wrapper(model_path: os.PathLike):
                 _run_attack(model_path, fold_index,

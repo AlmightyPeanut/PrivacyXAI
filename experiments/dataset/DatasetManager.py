@@ -81,7 +81,7 @@ class DatasetManager(metaclass=Singleton):
             yield fold_index, (data["train"], data["test"])
 
     def get_mia_data_folds(self, dataset_name: str, use_federated_data_only: bool = False,
-                           number_of_clients: int = 0) -> (int, DataLoader, DataLoader, DataLoader):
+                           number_of_clients: int = 0) -> (int, np.array, DataLoader, DataLoader):
         if not self.datasets[dataset_name]:
             raise ValueError(f"Dataset {dataset_name} not available")
 
@@ -96,7 +96,19 @@ class DatasetManager(metaclass=Singleton):
                     raise ValueError("Number of clients must be greater than zero if federated data should be used!")
                 train_data = self.split_data_for_federated_learning(train_data, number_of_clients)[0]
 
-            yield fold_index, (train_data, data["test"], data["mia"])
+            train_data_result = {
+                "features": [],
+                "classes": [],
+            }
+
+            for train_data_dict in train_data:
+                train_data_result["features"].append(train_data_dict["features"])
+                train_data_result["classes"].append(train_data_dict["classes"])
+
+            train_data_result["features"] = np.concatenate(train_data_result["features"], axis=0)
+            train_data_result["classes"] = np.concatenate(train_data_result["classes"], axis=0)
+
+            yield fold_index, (train_data_result, data["test"], data["mia"])
 
     def split_data_for_federated_learning(self, data: DataLoader, number_of_clients: int) -> list[DataLoader]:
         train_data = data.dataset
