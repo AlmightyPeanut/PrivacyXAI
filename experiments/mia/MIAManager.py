@@ -64,7 +64,7 @@ def wrap_task(pool: Pool, task, generator):
 
 def _run_attack(target_model_path: os.PathLike, fold_index: int,
                 number_of_features: int, number_of_classes: int,
-                target_model_train_data: DataLoader, target_model_test_data: dict,
+                target_model_train_data: dict, target_model_test_data: dict,
                 shadow_model_data: dict) -> None:
     if torch.cuda.is_available():
         gpu_id = np.random.randint(0, torch.cuda.device_count())
@@ -94,18 +94,17 @@ def _run_attack(target_model_path: os.PathLike, fold_index: int,
                                                            shadow_model_data['classes'])
     (member_x, member_y, member_predictions), (non_member_x, non_member_y, non_member_predictions) = shadow_dataset
 
-    target_model_test_data_batch = target_model_test_data
     shadow_models_evaluation_results = []
     for shadow_model in shadow_models.get_shadow_models():
-        prediction_logits = shadow_model.predict(target_model_test_data_batch['features'])
+        prediction_logits = shadow_model.predict(target_model_test_data['features'])
         prediction_classes = np.round(prediction_logits, decimals=0)
 
         shadow_models_evaluation_results.append({
-            "AUROC": roc_auc_score(target_model_test_data_batch['classes'], prediction_logits,
+            "AUROC": roc_auc_score(target_model_test_data['classes'], prediction_logits,
                                    multi_class='ovr', average='macro'),
-            "Acc": accuracy_score(target_model_test_data_batch['classes'], prediction_classes),
-            "Macro F1 Score": f1_score(target_model_test_data_batch['classes'], prediction_classes, average='macro'),
-            "Binary F1 Score": f1_score(target_model_test_data_batch['classes'], prediction_classes, average='binary'),
+            "Acc": accuracy_score(target_model_test_data['classes'], prediction_classes),
+            "Macro F1 Score": f1_score(target_model_test_data['classes'], prediction_classes, average='macro'),
+            "Binary F1 Score": f1_score(target_model_test_data['classes'], prediction_classes, average='binary'),
         })
 
     # This mia library works only with at least 2 classes
@@ -114,24 +113,20 @@ def _run_attack(target_model_path: os.PathLike, fold_index: int,
     attack = MembershipInferenceBlackBox(target_model)
     attack.fit(member_x, member_y, non_member_x, non_member_y, member_predictions, non_member_predictions)
 
-    all_membership_inference = []
-    for target_model_train_data_batch in target_model_train_data:
-        target_prediction = target_model.predict(target_model_train_data_batch['features'])
-        target_prediction = np.concatenate([1 - target_prediction, target_prediction], axis=1)
-        membership_inference = attack.infer(target_model_train_data_batch['features'],
-                                            target_model_train_data_batch['classes'],
-                                            pred=target_prediction)
-        all_membership_inference.append(membership_inference)
-    all_membership_inference = np.concatenate(all_membership_inference)
-
-    target_prediction = target_model.predict(target_model_test_data_batch['features'])
+    target_prediction = target_model.predict(target_model_train_data['features'])
     target_prediction = np.concatenate([1 - target_prediction, target_prediction], axis=1)
-    non_membership_inference = attack.infer(target_model_test_data_batch['features'],
-                                            target_model_test_data_batch['classes'],
+    membership_inference = attack.infer(target_model_train_data['features'],
+                                        target_model_train_data['classes'],
+                                        pred=target_prediction)
+
+    target_prediction = target_model.predict(target_model_test_data['features'])
+    target_prediction = np.concatenate([1 - target_prediction, target_prediction], axis=1)
+    non_membership_inference = attack.infer(target_model_test_data['features'],
+                                            target_model_test_data['classes'],
                                             pred=target_prediction)
 
-    predicted_membership = np.concatenate([all_membership_inference, non_membership_inference])
-    true_membership = np.concatenate([np.ones(len(all_membership_inference)),
+    predicted_membership = np.concatenate([membership_inference, non_membership_inference])
+    true_membership = np.concatenate([np.ones(len(membership_inference)),
                                       np.zeros(len(non_membership_inference))])
 
     results = {
