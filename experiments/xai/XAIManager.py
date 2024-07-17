@@ -56,6 +56,10 @@ def evaluate_model_explanations(data: np.array, model: torch.nn.Module, xai_metr
 
 def xai_task(data: np.array, model_file: os.PathLike,
              number_of_features: int, number_of_classes: int):
+    model_xai_file = os.path.basename(model_file)[:-3] + 'csv'
+    if os.path.exists(RESULTS_PATH / 'xai' / model_xai_file):
+        return
+
     if torch.cuda.is_available():
         gpu_id = np.random.randint(0, torch.cuda.device_count())
         torch.cuda.set_device(gpu_id)
@@ -75,7 +79,6 @@ def xai_task(data: np.array, model_file: os.PathLike,
     config = XAIConfig()
     eval_scores = evaluate_model_explanations(data, model, config.xai_metrics, config.methods, number_of_classes)
 
-    model_xai_file = os.path.basename(model_file)[:-3] + 'csv'
     eval_scores.to_csv(RESULTS_PATH / 'xai' / model_xai_file)
 
 
