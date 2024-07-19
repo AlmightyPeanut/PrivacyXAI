@@ -40,7 +40,7 @@ class XAIConfig:
         "Lime": {
             "method": "Lime",
             "xai_lib_kwargs": {
-                "interpretable_model": SkLearnLasso(alpha=.0),
+                "interpretable_model": SkLearnLasso(alpha=.0001),
             },
             "xai_lib": 'captum',
             "device": TORCH_DEVICE,
