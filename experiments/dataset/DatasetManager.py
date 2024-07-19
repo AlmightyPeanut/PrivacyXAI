@@ -9,6 +9,7 @@ from .MIMICDataset import MIMICDataset
 from .DatasetConfig import DatasetConfig, SUPPORTED_DATASETS
 from experiments.utils.Singleton import Singleton
 from .MIMICExtract import MIMICExtractDataset
+from .NormalisedDataset import NormalisedDataset
 
 torch.manual_seed(42)
 
@@ -49,22 +50,29 @@ class DatasetManager(metaclass=Singleton):
             for fold_index, (train_ids, test_ids, mia_non_member_ids) in enumerate(
                     self.prepare_train_test_mia_fold_ids(folds_element_ids)
             ):
+                train_data_features = dataset.__getitems__(train_ids)["features"]
+                train_std = np.std(train_data_features, axis=0)
+                train_mean = np.mean(train_data_features, axis=0)
+                del train_data_features
+
+                normalised_dataset = NormalisedDataset(dataset, train_std, train_mean)
+
                 self.datasets[dataset_name][fold_index] = dict()
                 self.datasets[dataset_name][fold_index]["train"] = DataLoader(
-                    torch.utils.data.Subset(dataset, train_ids),
+                    torch.utils.data.Subset(normalised_dataset, train_ids),
                     batch_size=self.config.batch_size if self.config.batch_size > 0 else len(train_ids),
                     shuffle=True,
                     collate_fn=lambda x: x
                 )
                 self.datasets[dataset_name][fold_index]["test"] = DataLoader(
-                    torch.utils.data.Subset(dataset, test_ids),
+                    torch.utils.data.Subset(normalised_dataset, test_ids),
                     batch_size=len(test_ids),
                     shuffle=True,
                     collate_fn=lambda x: x
                 )
                 # This represents either held back data or newly acquired data by a malicious client
                 self.datasets[dataset_name][fold_index]["mia"] = DataLoader(
-                    torch.utils.data.Subset(dataset, mia_non_member_ids),
+                    torch.utils.data.Subset(normalised_dataset, mia_non_member_ids),
                     batch_size=len(mia_non_member_ids),
                     shuffle=True,
                     collate_fn=lambda x: x
@@ -191,7 +199,7 @@ class DatasetManager(metaclass=Singleton):
     @staticmethod
     def prepare_train_test_mia_fold_ids(folds_element_ids: list[np.array]):
         for fold_index, fold_element_ids in enumerate(folds_element_ids):
-            train_ids = [ids for index, ids in enumerate(folds_element_ids)]
+            train_ids = [ids for index, ids in enumerate(folds_element_ids) if index != fold_index]
             mia_ids = train_ids[-1]
             train_ids = np.concatenate(train_ids[:-1])
             yield train_ids, fold_element_ids, mia_ids

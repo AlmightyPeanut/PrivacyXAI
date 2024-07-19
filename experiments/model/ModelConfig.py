@@ -7,4 +7,4 @@ class ModelConfig:
     number_of_epochs: int = 100
 
     dp_target_delta: float = 0.01
-    dp_max_grad_norm: float = 1.0
+    dp_max_grad_norm: float = 2.

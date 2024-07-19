@@ -8,4 +8,3 @@ class DatasetConfig:
     datasets: set = field(default_factory=lambda: {'MIMICExtract'})
     batch_size: int = field(default=128)
     kfolds: int = 10
-    mia_shadow_model_test_size: float = 0.2

@@ -1,6 +1,5 @@
 import os
 
-import torch
 from torch.utils.data import DataLoader
 
 from experiments.dataset.DatasetManager import DATASET_MANAGER
@@ -38,7 +37,7 @@ class Experiment:
         model_manager = ModelManager(DATASET_MANAGER.get_number_of_features(dataset_name),
                                      DATASET_MANAGER.get_number_of_classes(dataset_name))
         if use_differential_privacy:
-            model_manager.privatise_models_and_data(train_data, epsilon=epsilon)
+            train_data = model_manager.privatise_models_and_data(train_data, epsilon=epsilon)
 
         print(f"Training target model with {dataset_name} training data. Fold {fold_index}")
         model_manager.train_target_models(train_data)

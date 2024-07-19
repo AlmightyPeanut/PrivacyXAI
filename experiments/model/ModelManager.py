@@ -42,6 +42,7 @@ class ModelManager:
         self.number_of_features = number_of_features
         self.number_of_classes = number_of_classes
         self.config = config
+        self.use_private_models = False
 
         if not self.config.target_models:
             raise NoValidModelSpecified
@@ -51,7 +52,7 @@ class ModelManager:
             self.lr_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.lr_loss_function = nn.CrossEntropyLoss()
-            self.lr_optimizer = SGD(self.lr_model.parameters(), lr=0.001)  # , weight_decay=0.001)
+            self.lr_optimizer = SGD(self.lr_model.parameters(), lr=0.001)
             self.lr_privacy_engine = PrivacyEngine(accountant='rdp')
 
         if 'NN' in self.config.target_models:
@@ -60,7 +61,7 @@ class ModelManager:
             self.nn_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
-            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001)  # , weight_decay=0.001)
+            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001)
             self.nn_privacy_engine = PrivacyEngine(accountant='rdp')
 
     def train_target_models(self, train_data: DataLoader) -> None:
@@ -81,25 +82,30 @@ class ModelManager:
         lr_epoch_loss = .0
         nn_epoch_loss = .0
         for batch_index, batch_data in enumerate(train_data):
-            pbar_postfix = []
+            train_data_x = torch.tensor(batch_data['features'], dtype=torch.float32).to(self.TORCH_DEVICE)
+            train_data_y = torch.tensor(batch_data['classes'], dtype=torch.float32).to(self.TORCH_DEVICE)
 
+            pbar_postfix = []
             if 'LR' in self.config.target_models:
-                lr_loss = self._train_lr_model_one_batch(batch_data)
+                lr_loss = self._train_lr_model_one_batch(train_data_x, train_data_y)
                 lr_epoch_loss += lr_loss
                 pbar_postfix.append(f" LR Loss: {lr_loss:.3f} (Epoch avg.: {lr_epoch_loss / (batch_index + 1):.3f})")
+                if self.use_private_models:
+                    pbar_postfix.append(f" ε = {self.lr_privacy_engine.get_epsilon(self.config.dp_target_delta)}")
 
             if 'NN' in self.config.target_models:
-                nn_loss = self._train_nn_model_one_batch(batch_data)
+                nn_loss = self._train_nn_model_one_batch(train_data_x, train_data_y)
                 nn_epoch_loss += nn_loss
                 pbar_postfix.append(f" NN Loss: {nn_loss:.3f} (Epoch avg.: {nn_epoch_loss / (batch_index + 1):.3f})")
+                if self.use_private_models:
+                    pbar_postfix.append(f" ε = {self.nn_privacy_engine.get_epsilon(self.config.dp_target_delta)}")
 
             pbar.set_postfix_str(','.join(pbar_postfix))
             pbar.update()
 
-    def _train_lr_model_one_batch(self, batch_data: dict[str, np.ndarray]) -> float:
-        outputs = self.lr_model(torch.tensor(batch_data['features'], dtype=torch.float, device=self.TORCH_DEVICE))
-        loss = self.lr_loss_function(outputs,
-                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=self.TORCH_DEVICE))
+    def _train_lr_model_one_batch(self, train_data_x: torch.Tensor, train_data_y: torch. Tensor) -> float:
+        outputs = self.lr_model(train_data_x)
+        loss = self.lr_loss_function(outputs, train_data_y)
 
         self.lr_optimizer.zero_grad()
         loss.backward()
@@ -107,10 +113,9 @@ class ModelManager:
 
         return loss.item()
 
-    def _train_nn_model_one_batch(self, batch_data: dict[str, np.array]) -> float:
-        outputs = self.nn_model(torch.tensor(batch_data['features'], dtype=torch.float, device=self.TORCH_DEVICE))
-        loss = self.nn_loss_function(outputs,
-                                     torch.tensor(batch_data['classes'], dtype=torch.float, device=self.TORCH_DEVICE))
+    def _train_nn_model_one_batch(self, train_data_x: torch.Tensor, train_data_y: torch. Tensor) -> float:
+        outputs = self.nn_model(train_data_x)
+        loss = self.nn_loss_function(outputs, train_data_y)
 
         self.nn_optimizer.zero_grad()
         loss.backward()
@@ -126,31 +131,12 @@ class ModelManager:
         prediction_logits = self.predict_one_batch_logits(test_data_samples['features'])
 
         if 'LR' in prediction_logits:
-            if self.number_of_classes == 1:
-                prediction_classes = np.round(prediction_logits['LR'], decimals=0)
-            else:
-                prediction_classes = np.argmax(prediction_logits['LR'], axis=1)
-
-            evaluation_results['LR'] = {
-                "AUROC": roc_auc_score(test_data_samples['classes'], prediction_logits['LR'],
-                                       multi_class='ovr', average='macro'),
-                "Acc": accuracy_score(test_data_samples['classes'], prediction_classes),
-                "Macro F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='macro'),
-                "Binary F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
-            }
+            evaluation_results['LR'] = self._calculate_training_metrics(prediction_logits['LR'],
+                                                                        test_data_samples['classes'])
 
         if 'NN' in self.config.target_models:
-            if self.number_of_classes == 1:
-                prediction_classes = np.round(prediction_logits['NN'], decimals=0)
-            else:
-                prediction_classes = np.argmax(prediction_logits['NN'], axis=1)
-            evaluation_results['NN'] = {
-                "AUROC": roc_auc_score(test_data_samples['classes'], prediction_logits['NN'],
-                                       multi_class='ovr', average='macro'),
-                "Acc": accuracy_score(test_data_samples['classes'], prediction_classes),
-                "Macro F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='macro'),
-                "Binary F1 Score": f1_score(test_data_samples['classes'], prediction_classes, average='binary'),
-            }
+            evaluation_results['NN'] = self._calculate_training_metrics(prediction_logits['NN'],
+                                                                        test_data_samples['classes'])
 
         if save_results:
             file_name = f"centralised_model_metrics_fold={fold_index}"
@@ -168,6 +154,20 @@ class ModelManager:
                 for metric_name, metric_score in metric_scores.items():
                     print(f"{metric_name}: {metric_score}")
 
+        return evaluation_results
+
+    def _calculate_training_metrics(self, prediction_logits: np.array, targets: np.array) -> dict[str, float]:
+        if self.number_of_classes == 1:
+            prediction_classes = np.round(prediction_logits, decimals=0)
+        else:
+            prediction_classes = np.argmax(prediction_logits, axis=1)
+        evaluation_results = {
+            "AUROC": roc_auc_score(targets, prediction_logits,
+                                   multi_class='ovr', average='macro'),
+            "Acc": accuracy_score(targets, prediction_classes),
+            "Macro F1 Score": f1_score(targets, prediction_classes, average='macro'),
+            "Binary F1 Score": f1_score(targets, prediction_classes, average='binary'),
+        }
         return evaluation_results
 
     def get_parameters_of_models(self) -> list[np.array]:
@@ -216,10 +216,11 @@ class ModelManager:
 
     def privatise_models_and_data(self, data_loader: DataLoader, epsilon: float):
         print(f"Privatising with eps={epsilon}")
+        self.use_private_models = True
 
         # new_data_loader = None
         if 'LR' in self.config.target_models:
-            self.lr_model, self.lr_optimizer, _ = self.lr_privacy_engine.make_private_with_epsilon(
+            self.lr_model, self.lr_optimizer, data_loader = self.lr_privacy_engine.make_private_with_epsilon(
                 module=self.lr_model,
                 optimizer=self.lr_optimizer,
                 data_loader=data_loader,
@@ -227,11 +228,10 @@ class ModelManager:
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
-                poisson_sampling=False,
             )
 
         if 'NN' in self.config.target_models:
-            self.nn_model, self.nn_optimizer, _ = self.nn_privacy_engine.make_private_with_epsilon(
+            self.nn_model, self.nn_optimizer, data_loader = self.nn_privacy_engine.make_private_with_epsilon(
                 module=self.nn_model,
                 optimizer=self.nn_optimizer,
                 data_loader=data_loader,
@@ -239,13 +239,9 @@ class ModelManager:
                 target_delta=self.config.dp_target_delta,
                 epochs=self.config.number_of_epochs,
                 max_grad_norm=self.config.dp_max_grad_norm,
-                poisson_sampling=False,
             )
 
-        # if new_data_loader is not None:
-        #     # TODO: data loader is never used
-        #     return new_data_loader
-        # return data_loader
+        return data_loader
 
     def save_models(self, model_folder_path: os.PathLike, parameters: dict) -> None:
         if not os.path.exists(model_folder_path):
@@ -295,20 +291,19 @@ class ModelManager:
         return models
 
     def predict_one_batch_logits(self, data: np.array) -> dict[str, np.ndarray]:
-        prediction_logits = {}
+        test_data = torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)
 
+        prediction_logits = {}
         if 'LR' in self.config.target_models:
             self.lr_model.eval()
             with torch.no_grad():
-                class_probabilities = self.lr_model(
-                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().cpu().numpy()
+                class_probabilities = self.lr_model(test_data).detach().cpu().numpy()
             prediction_logits['LR'] = class_probabilities
 
         if 'NN' in self.config.target_models:
             self.nn_model.eval()
             with torch.no_grad():
-                class_probabilities = self.nn_model(
-                    torch.tensor(data, dtype=torch.float32, device=self.TORCH_DEVICE)).detach().cpu().numpy()
+                class_probabilities = self.nn_model(test_data).detach().cpu().numpy()
             prediction_logits['NN'] = class_probabilities
 
         return prediction_logits

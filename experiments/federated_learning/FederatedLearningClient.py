@@ -23,7 +23,7 @@ class FederatedLearningClient(fl.client.NumPyClient):
         model_config.number_of_epochs = 1
         self.model_manager = ModelManager(number_of_features, number_of_classes, config=model_config)
         if privatise_models:
-            self.model_manager.privatise_models_and_data(train_data, epsilon)
+            self.train_data = self.model_manager.privatise_models_and_data(train_data, epsilon)
 
     def get_parameters(self, config: dict[str, scalar]) -> list[np.array]:
         return self.model_manager.get_parameters_of_models()

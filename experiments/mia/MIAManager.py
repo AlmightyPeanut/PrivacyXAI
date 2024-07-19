@@ -11,10 +11,9 @@ import torch
 import tqdm
 from art.attacks.inference.membership_inference import MembershipInferenceBlackBox, ShadowModels
 from art.estimators.classification import PyTorchClassifier
-from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score
+from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score, recall_score
 from torch import multiprocessing
 from torch.multiprocessing import Pool
-from torch.utils.data import DataLoader
 
 from experiments.mia.MIAConfig import MIAConfig
 from experiments.model.LRClassifier import LRClassifier
@@ -133,7 +132,7 @@ def _run_attack(target_model_path: os.PathLike, fold_index: int,
         "fold_index": fold_index,
         "attack_accuracy": accuracy_score(true_membership, predicted_membership),
         "attack_precision": precision_score(true_membership, predicted_membership),
-        "attack_recall": precision_score(true_membership, predicted_membership),
+        "attack_recall": recall_score(true_membership, predicted_membership),
         "shadow_model_scores": shadow_models_evaluation_results,
     }
 
