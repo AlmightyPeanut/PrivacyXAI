@@ -1,5 +1,12 @@
+import marshal
 import os
+import pickle
+import types
+from functools import partial
 
+import torch
+import tqdm
+from torch.multiprocessing import Pool
 from torch.utils.data import DataLoader
 
 from experiments.dataset.DatasetManager import DATASET_MANAGER
@@ -10,6 +17,89 @@ from experiments.xai.XAIManager import XAIManager
 from experiments.mia.MIAManager import run_membership_inference_attack
 
 
+def run_task(*args, **kwargs):
+    marshaled = kwargs.pop('marshaled_func')
+    func = marshal.loads(marshaled)
+    pickled_closure = kwargs.pop('pickled_closure')
+    pickled_closure = pickle.loads(pickled_closure)
+
+    restored_function = types.FunctionType(func, globals(), closure=create_closure(func, pickled_closure))
+    return restored_function(*args, **kwargs)
+
+
+def create_closure(func, original_closure):
+    indent = " " * 4
+    closure_vars_def = f"\n{indent}".join(f"{name}=None" for name in func.co_freevars)
+    closure_vars_ref = ",".join(func.co_freevars)
+    dynamic_closure = "create_dynamic_closure"
+    s = (f"""
+def {dynamic_closure}():
+    {closure_vars_def}
+    def internal():
+        {closure_vars_ref}
+    return internal.__closure__
+    """)
+    exec(s)
+    created_closure = locals()[dynamic_closure]()
+    for closure_var, value in zip(created_closure, original_closure):
+        closure_var.cell_contents = value
+    return created_closure
+
+
+def wrap_task(pool: Pool, task, generator):
+    closure = task.__closure__
+    pickled_closure = pickle.dumps(tuple(x.cell_contents for x in closure))
+    marshaled_func = marshal.dumps(task.__code__)
+    with tqdm.tqdm(total=len(generator)) as pbar:
+        for _ in pool.imap_unordered(partial(run_task, marshaled_func=marshaled_func, pickled_closure=pickled_closure),
+                                     generator):
+            pbar.update()
+
+
+def wrap_single_task(task, *args):
+    closure = task.__closure__
+    pickled_closure = pickle.dumps(tuple(x.cell_contents for x in closure))
+    marshaled_func = marshal.dumps(task.__code__)
+    return torch.multiprocessing.spawn(
+        partial(run_task, marshaled_func=marshaled_func, pickled_closure=pickled_closure),
+        args=args,
+        join=False
+    )
+
+
+def _run_centralised_training(dataset_name: str, train_data: DataLoader, test_data: DataLoader, fold_index: int,
+                              use_differential_privacy: bool, epsilon: float = .0):
+    model_manager = ModelManager(DATASET_MANAGER.get_number_of_features(dataset_name),
+                                 DATASET_MANAGER.get_number_of_classes(dataset_name), use_nn_regularisation=True)
+    if use_differential_privacy:
+        train_data = model_manager.privatise_models_and_data(train_data, epsilon=epsilon)
+
+    print(f"Training target model with {dataset_name} training data. Fold {fold_index}")
+    model_manager.train_target_models(train_data)
+    model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model',
+                              {'privatised': use_differential_privacy, 'fl': False, 'fold': fold_index,
+                               'epsilon': epsilon})
+
+    print(f"Testing model with {dataset_name} test data. Fold {fold_index}")
+    model_manager.evaluate_target_models(test_data, fold_index, {
+        'privatised': use_differential_privacy,
+        'epsilon': epsilon,
+        'fl': False,
+    })
+
+
+def _run_centralised_model(dataset_name: str, epsilons: list[float]):
+    for fold_index, (train_data, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
+        def training_task(dp_settings: tuple[bool, float]):
+            _run_centralised_training(dataset_name, train_data, test_data, fold_index,
+                                      dp_settings[0], dp_settings[1])
+
+        _dp_settings = [(True, epsilon) for epsilon in epsilons]
+        _dp_settings.append((False, .0))
+        with Pool(len(epsilons) + 1) as pool:
+            wrap_task(pool, training_task, _dp_settings)
+
+
 class Experiment:
     def __init__(self, number_of_clients: list[int], epsilons: list[float]):
         self.number_of_clients = number_of_clients
@@ -17,50 +107,24 @@ class Experiment:
 
     def run_model_training(self, federated_learning: bool = True, centralised_model: bool = True):
         for dataset_name in DATASET_MANAGER.datasets:
-            if federated_learning:
-                self._run_federated_learning(dataset_name)
+            processes = []
+
             if centralised_model:
-                self._run_centralised_model(dataset_name)
+                def _centralised_training_task(task_id, epsilons: list[float]):
+                    _run_centralised_model(dataset_name, epsilons)
 
-    def _run_centralised_model(self, dataset_name: str):
-        for fold_index, (train_data, test_data) in DATASET_MANAGER.get_data_folds(dataset_name):
-            self._run_centralised_training(dataset_name, train_data, test_data, fold_index,
-                                           use_differential_privacy=False)
+                processes.append(wrap_single_task(_centralised_training_task, self.epsilons))
 
-            for epsilon in self.epsilons:
-                self._run_centralised_training(dataset_name, train_data, test_data, fold_index,
-                                               use_differential_privacy=True, epsilon=epsilon)
+            if federated_learning:
+                for number_of_clients in self.number_of_clients:
+                    def _federated_training_task(task_id, epsilons: list[float]):
+                        fl_manager = FederatedLearningManager(number_of_clients, epsilons)
+                        fl_manager.start_simulation(dataset_name)
 
-    @staticmethod
-    def _run_centralised_training(dataset_name: str, train_data: DataLoader, test_data: DataLoader, fold_index: int,
-                                  use_differential_privacy: bool, epsilon: float = .0):
-        model_manager = ModelManager(DATASET_MANAGER.get_number_of_features(dataset_name),
-                                     DATASET_MANAGER.get_number_of_classes(dataset_name))
-        if use_differential_privacy:
-            train_data = model_manager.privatise_models_and_data(train_data, epsilon=epsilon)
+                    processes.append(wrap_single_task(_federated_training_task, self.epsilons))
 
-        print(f"Training target model with {dataset_name} training data. Fold {fold_index}")
-        model_manager.train_target_models(train_data)
-        model_manager.save_models(MODEL_CHECKPOINTS_PATH / 'non_fl_model',
-                                  {'privatised': use_differential_privacy, 'fl': False, 'fold': fold_index,
-                                   'epsilon': epsilon})
-
-        print(f"Testing model with {dataset_name} test data. Fold {fold_index}")
-        model_manager.evaluate_target_models(test_data, fold_index, {
-            'privatised': use_differential_privacy,
-            'epsilon': epsilon,
-            'fl': False,
-        })
-
-    def _run_federated_learning(self, dataset_name: str):
-        for number_of_clients in self.number_of_clients:
-            fl_manager = FederatedLearningManager(privatise_models=False, number_of_clients=number_of_clients)
-            fl_manager.start_simulation(dataset_name)
-
-            for epsilon in self.epsilons:
-                fl_manager = FederatedLearningManager(privatise_models=True, number_of_clients=number_of_clients,
-                                                      epsilon=epsilon)
-                fl_manager.start_simulation(dataset_name)
+            for process in processes:
+                process.join()
 
     @staticmethod
     def _get_model_paths(use_centralised_model: bool, use_federated_model: bool) -> list[os.PathLike]:

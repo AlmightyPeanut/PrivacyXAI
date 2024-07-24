@@ -73,14 +73,13 @@ def _run_attack(target_model_path: os.PathLike, fold_index: int,
 
     if 'lr_model' in str(target_model_path):
         target_model = LRClassifier(number_of_features, number_of_classes)
-        shadow_model = LRClassifier(number_of_features, number_of_classes)
-        shadow_model_optimizer = torch.optim.SGD(shadow_model.parameters(), lr=0.1)
     elif 'nn_model' in str(target_model_path):
         target_model = NNClassifier(number_of_features, number_of_classes)
-        shadow_model = NNClassifier(number_of_features, number_of_classes)
-        shadow_model_optimizer = torch.optim.AdamW(shadow_model.parameters(), lr=0.1)
     else:
         raise ValueError(f"Model path {target_model_path} is not a valid model path!")
+
+    shadow_model = NNClassifier(number_of_features, number_of_classes)
+    shadow_model_optimizer = torch.optim.AdamW(shadow_model.parameters(), lr=0.1)
 
     target_model.load_state_dict(remove_model_prefix(torch.load(target_model_path), '_module.'))
     target_model = PyTorchClassifier(target_model, torch.nn.BCELoss(),

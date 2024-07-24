@@ -28,12 +28,13 @@ class MIMICExtractDataset(BaseDataset):
     def _remove_duplicates_from_data(self):
         features = pl.read_csv(DATASET_PATH / 'MIMIC' / 'mimic_extract_features.csv')
 
-        missing_data_mask_columns = [features.columns[i] for i, data_type in enumerate(features.row(0)) if
-                                     data_type == 'mask']
-        time_since_measured_columns = [features.columns[i] for i, data_type in enumerate(features.row(0)) if
-                                       data_type == 'time_since_measured']
+        # missing_data_mask_columns = [features.columns[i] for i, data_type in enumerate(features.row(0)) if
+        #                              data_type == 'mask']
+        # time_since_measured_columns = [features.columns[i] for i, data_type in enumerate(features.row(0)) if
+        #                                data_type == 'time_since_measured']
         features = features.with_row_index().filter((pl.col("index") != 0) & (pl.col("index") != 1)).drop("index")
-        mean_data = features.drop(missing_data_mask_columns).drop(time_since_measured_columns).with_columns(
+        # features = features.drop(missing_data_mask_columns).drop(time_since_measured_columns)
+        mean_data = features.with_columns(
             pl.col('*').cast(pl.Float64)
         )
 

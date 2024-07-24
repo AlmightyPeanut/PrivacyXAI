@@ -5,10 +5,12 @@ from experiments.dataset.BaseDataset import BaseDataset
 
 
 class NormalisedDataset(Dataset):
-    def __init__(self, dataset: BaseDataset, standard_deviation: float, mean: float):
+    def __init__(self, dataset: BaseDataset, standard_deviation: np.array, mean: np.array):
         self.dataset = dataset
-        self.standard_deviation = standard_deviation
         self.mean = mean
+        self.standard_deviation = standard_deviation
+        self.mean[self.standard_deviation == 0] = 0.
+        self.standard_deviation[self.standard_deviation == 0] = 1.
 
     def __len__(self):
         return len(self.dataset)

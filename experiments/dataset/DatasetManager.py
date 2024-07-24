@@ -14,10 +14,14 @@ from .NormalisedDataset import NormalisedDataset
 torch.manual_seed(42)
 
 
+def collate_fn(x):
+    return x
+
+
 class DatasetManager(metaclass=Singleton):
     def __init__(self, config: DatasetConfig = DatasetConfig()):
         self.config = config
-        self.collate_fn = lambda x: x
+        self.collate_fn = collate_fn
         self.datasets = dict()
 
         self.federated_learning_dataloaders = {}
@@ -62,20 +66,20 @@ class DatasetManager(metaclass=Singleton):
                     torch.utils.data.Subset(normalised_dataset, train_ids),
                     batch_size=self.config.batch_size if self.config.batch_size > 0 else len(train_ids),
                     shuffle=True,
-                    collate_fn=lambda x: x
+                    collate_fn=self.collate_fn
                 )
                 self.datasets[dataset_name][fold_index]["test"] = DataLoader(
                     torch.utils.data.Subset(normalised_dataset, test_ids),
                     batch_size=len(test_ids),
                     shuffle=True,
-                    collate_fn=lambda x: x
+                    collate_fn=self.collate_fn
                 )
                 # This represents either held back data or newly acquired data by a malicious client
                 self.datasets[dataset_name][fold_index]["mia"] = DataLoader(
                     torch.utils.data.Subset(normalised_dataset, mia_non_member_ids),
                     batch_size=len(mia_non_member_ids),
                     shuffle=True,
-                    collate_fn=lambda x: x
+                    collate_fn=self.collate_fn
                 )
 
     def get_data_folds(self, dataset_name: str) -> (int, DataLoader, DataLoader):
@@ -131,7 +135,7 @@ class DatasetManager(metaclass=Singleton):
             DataLoader(data_partition,
                        batch_size=self.config.batch_size if self.config.batch_size > 0 else len(data_partition),
                        shuffle=True,
-                       collate_fn=lambda x: x)
+                       collate_fn=self.collate_fn)
             for data_partition in data_partitions
         ]
 
@@ -182,7 +186,7 @@ class DatasetManager(metaclass=Singleton):
         return DataLoader(data,
                           batch_size=self.config.batch_size if self.config.batch_size > 0
                           else len(data), shuffle=True,
-                          collate_fn=lambda x: x)
+                          collate_fn=self.collate_fn)
 
     def get_number_of_features(self, dataset_name: str) -> int:
         if dataset_name not in self.datasets:

@@ -31,7 +31,8 @@ class NoValidModelSpecified(Exception):
 
 
 class ModelManager:
-    def __init__(self, number_of_features, number_of_classes, config: ModelConfig = ModelConfig()):
+    def __init__(self, number_of_features, number_of_classes, config: ModelConfig = ModelConfig(),
+                 use_nn_regularisation=False):
         if torch.cuda.is_available():
             self.TORCH_DEVICE = torch.device("cuda")
         elif torch.backends.mps.is_available():
@@ -61,7 +62,10 @@ class ModelManager:
             self.nn_loss_function = nn.BCELoss()
             if self.number_of_classes > 1:
                 self.nn_loss_function = nn.CrossEntropyLoss()
-            self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001)
+            if use_nn_regularisation:
+                self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001, weight_decay=1.)
+            else:
+                self.nn_optimizer = AdamW(self.nn_model.parameters(), lr=0.001)
             self.nn_privacy_engine = PrivacyEngine(accountant='rdp')
 
     def train_target_models(self, train_data: DataLoader) -> None:
@@ -86,19 +90,23 @@ class ModelManager:
             train_data_y = torch.tensor(batch_data['classes'], dtype=torch.float32).to(self.TORCH_DEVICE)
 
             pbar_postfix = []
+            epsilon_postfix = ''
             if 'LR' in self.config.target_models:
                 lr_loss = self._train_lr_model_one_batch(train_data_x, train_data_y)
                 lr_epoch_loss += lr_loss
                 pbar_postfix.append(f" LR Loss: {lr_loss:.3f} (Epoch avg.: {lr_epoch_loss / (batch_index + 1):.3f})")
                 if self.use_private_models:
-                    pbar_postfix.append(f" ε = {self.lr_privacy_engine.get_epsilon(self.config.dp_target_delta)}")
+                    epsilon_postfix = f" ε = {self.lr_privacy_engine.get_epsilon(self.config.dp_target_delta)}"
 
             if 'NN' in self.config.target_models:
                 nn_loss = self._train_nn_model_one_batch(train_data_x, train_data_y)
                 nn_epoch_loss += nn_loss
                 pbar_postfix.append(f" NN Loss: {nn_loss:.3f} (Epoch avg.: {nn_epoch_loss / (batch_index + 1):.3f})")
                 if self.use_private_models:
-                    pbar_postfix.append(f" ε = {self.nn_privacy_engine.get_epsilon(self.config.dp_target_delta)}")
+                    epsilon_postfix = f" ε = {self.nn_privacy_engine.get_epsilon(self.config.dp_target_delta)}"
+
+            if epsilon_postfix != '':
+                pbar_postfix.append(epsilon_postfix)
 
             pbar.set_postfix_str(','.join(pbar_postfix))
             pbar.update()
