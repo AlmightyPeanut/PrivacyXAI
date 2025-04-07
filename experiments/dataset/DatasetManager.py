@@ -12,6 +12,7 @@ from .MIMICExtract import MIMICExtractDataset
 from .NormalisedDataset import NormalisedDataset
 
 torch.manual_seed(42)
+# TODO: investigate if data is always split the same way
 
 
 def collate_fn(x):

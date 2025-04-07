@@ -121,6 +121,8 @@ class Experiment:
                         fl_manager = FederatedLearningManager(number_of_clients, epsilons)
                         fl_manager.start_simulation(dataset_name)
 
+                    _federated_training_task(0, self.epsilons)
+
                     processes.append(wrap_single_task(_federated_training_task, self.epsilons))
 
             for process in processes:

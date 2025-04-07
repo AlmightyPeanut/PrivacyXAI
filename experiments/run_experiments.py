@@ -9,4 +9,4 @@ if __name__ == '__main__':
     experiment = Experiment(**PARAMETERS_TO_EXPLORE)
     experiment.run_model_training()
     experiment.run_xai_evaluation()
-    # experiment.run_mia()
+    experiment.run_mia()

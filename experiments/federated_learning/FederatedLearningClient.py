@@ -38,9 +38,9 @@ class FederatedLearningClient(fl.client.NumPyClient):
 
     def evaluate(
             self, parameters_of_models: list[np.array], config: dict[str, scalar]
-    ) -> tuple[float, int, dict[str, dict[str, float]]]:
+    ) -> tuple[float, int, dict[str, float]]:
         self.model_manager.set_parameters_of_models(parameters_of_models)
         evaluation_scores = self.model_manager.evaluate_target_models(self.train_data, fold_index=0,
                                                                       model_parameters={}, save_results=False)
 
-        return .0, self.train_data_size, evaluation_scores
+        return .0, self.train_data_size, evaluation_scores["NN"]

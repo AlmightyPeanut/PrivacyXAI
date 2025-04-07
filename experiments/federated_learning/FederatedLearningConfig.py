@@ -8,10 +8,10 @@ class FederatedLearningConfig:
 
     fraction_fit: float = .1
     fraction_evaluate: float = .0
-    num_rounds: int = 100
+    num_rounds: int = 1
 
-    client_training_epochs: int = 5
+    client_training_epochs: int = 1
     client_resources: dict = field(default_factory=lambda: {
-        "num_cpus": 20,
-        "num_gpus": 1,
+        "num_cpus": 1,
+        "num_gpus": 0,
     })

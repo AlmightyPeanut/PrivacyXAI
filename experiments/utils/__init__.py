@@ -1,9 +1,6 @@
 from pathlib import Path
 
-import tqdm
-from torch.multiprocessing.pool import Pool
-
-MODEL_CHECKPOINTS_PATH = Path(__file__).parent.parent.parent / 'model_checkpoints'
+MODEL_CHECKPOINTS_PATH = Path(__file__).parent.parent.parent / 'model_checkpoints_0719'
 DATASET_PATH = Path(__file__).parent.parent.parent / 'data'
 RESULTS_PATH = Path(__file__).parent.parent.parent / 'results'
 

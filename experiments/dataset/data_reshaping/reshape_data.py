@@ -1,9 +1,12 @@
 from functools import partial
+
+import h5py
 from icdmappings import Mapper
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 import seaborn as sns
 from sklearn.metrics.pairwise import rbf_kernel
@@ -32,6 +35,11 @@ def reshape_omr_data() -> pl.DataFrame:
         'Height (Inches)',
         'eGFR',
     ))
+
+    with pl.Config(tbl_cols=-1, tbl_width_chars=1000):
+        print(omr_data.describe())
+    breakpoint()
+    # TODO: data is shit
 
     omr_data = omr_data.with_columns(
         pl.when(pl.col('BMI (kg/m2)').is_null()).then(pl.col('BMI')).otherwise(pl.col('BMI (kg/m2)')).alias('BMI').cast(
@@ -63,6 +71,12 @@ def reshape_omr_data() -> pl.DataFrame:
         pl.col('BP').list.first().alias('BP_sys').cast(pl.Float64),
         pl.col('BP').list.last().alias('BP_dia').cast(pl.Float64),
     ).drop('BP')
+
+    print(omr_data.describe())
+    omr_data = omr_data.select(pl.col('subject_id'),
+                               (pl.all().exclude('subject_id') - pl.all().exclude('subject_id').mean())
+                               / pl.all().exclude('subject_id').std())
+    print(omr_data.describe())
 
     return omr_data
 
@@ -173,6 +187,14 @@ def get_length_of_stay(subject_and_hadm_ids: pl.DataFrame) -> pl.DataFrame:
     return admission_data
 
 
+def read_mimic_extract_data() -> pl.DataFrame:
+    pd.set_option("expand_frame_repr", False)
+    hdf5_keys = ["codes", "interventions", "patients", "vitals_labs", "vitals_labs_mean"]
+    for key in hdf5_keys:
+        df: pd.DataFrame = pd.read_hdf(DATA_DIR_ROOT / 'all_hourly_data.h5', key=key)
+        print(df.describe())
+
+
 if __name__ == '__main__':
     omr_data_reshaped = reshape_omr_data()
     diagnoses_data_reshaped = reshape_diagnoses_data()
@@ -180,10 +202,10 @@ if __name__ == '__main__':
 
     all_data = diagnoses_data_reshaped.join(omr_data_reshaped, on='subject_id', how='left')
     all_data = all_data.join(length_of_stay, on=['subject_id', 'hadm_id'], how='inner')
-    # TODO: check for all null rows icd_code + vitals
 
     with pl.Config(tbl_cols=-1, tbl_width_chars=1000):
         print(all_data.describe())
         print(all_data.head(5))
 
     all_data.fill_null(-1).write_csv(DATA_DIR_ROOT / 'mimic_data_processed.csv')
+    read_mimic_extract_data()
